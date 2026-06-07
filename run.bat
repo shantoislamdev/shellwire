@@ -10,4 +10,4 @@ if not exist "%VENV_DIR%" (
     "%VENV_DIR%\Scripts\pip.exe" install -e ".[dev]"
 )
 
-"%VENV_DIR%\Scripts\python.exe" -m kotha_shell %*
+"%VENV_DIR%\Scripts\python.exe" -m shellwire %*

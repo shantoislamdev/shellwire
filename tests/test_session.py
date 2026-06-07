@@ -3,8 +3,8 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from kotha_shell.config import DaemonConfig
-from kotha_shell.session import SessionManager
+from shellwire.config import DaemonConfig
+from shellwire.session import SessionManager
 
 
 @pytest.mark.asyncio

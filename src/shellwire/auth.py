@@ -1,10 +1,10 @@
 """Stable token management and PID file helpers.
 
 The auth token is generated **once** on first daemon start and persists across
-restarts.  Only ``kotha token rotate`` replaces it.  This avoids breaking
+restarts.  Only ``shellwire token rotate`` replaces it.  This avoids breaking
 the KothaCode app every time the host system reboots.
 
-All files are stored under ``~/.kotha-shell/``.
+All files are stored under ``~/.shellwire/``.
 """
 
 from __future__ import annotations
@@ -20,7 +20,7 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 
-TOKEN_DIR: Path = Path(os.path.expanduser("~/.kotha-shell"))
+TOKEN_DIR: Path = Path(os.path.expanduser("~/.shellwire"))
 TOKEN_FILE: Path = TOKEN_DIR / "auth.token"
 PID_FILE: Path = TOKEN_DIR / "daemon.pid"
 
@@ -60,7 +60,7 @@ def _create_new_token() -> str:
 def ensure_token() -> str:
     """Return the existing token, or generate a new one on first start.
 
-    This is the primary entry-point used by ``kotha start``.  It guarantees
+    This is the primary entry-point used by ``shellwire start``.  It guarantees
     idempotency: calling it multiple times always returns the same token
     unless ``rotate_token()`` has been called in between.
 
@@ -77,7 +77,7 @@ def ensure_token() -> str:
 def rotate_token() -> str:
     """Generate a new token, replacing the old one.
 
-    Only called by ``kotha token rotate``.
+    Only called by ``shellwire token rotate``.
 
     Returns:
         The freshly generated token.

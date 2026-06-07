@@ -4,8 +4,8 @@ from unittest.mock import AsyncMock, patch
 import pytest
 import websockets
 
-from kotha_shell.config import DaemonConfig
-from kotha_shell.server import KothaServer
+from shellwire.config import DaemonConfig
+from shellwire.server import KothaServer
 
 
 @pytest.mark.asyncio
@@ -30,7 +30,7 @@ async def test_invalid_auth():
     
     mock_websocket = AsyncMock()
     
-    with patch("kotha_shell.server.validate_token", return_value=False):
+    with patch("shellwire.server.validate_token", return_value=False):
         # Simulate websocket yielding an invalid auth message
         mock_websocket.recv.return_value = '{"type": "auth", "token": "bad", "client_id": "test"}'
         

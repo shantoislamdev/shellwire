@@ -5,8 +5,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from kotha_shell.config import DaemonConfig
-from kotha_shell.executor import CommandExecutor
+from shellwire.config import DaemonConfig
+from shellwire.executor import CommandExecutor
 
 # Mock posix functions for windows tests
 if not hasattr(os, "setsid"):

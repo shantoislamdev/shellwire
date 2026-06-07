@@ -14,7 +14,7 @@ import signal
 import time
 from typing import Any, Callable, Coroutine, Dict, Optional
 
-from kotha_shell.config import DaemonConfig
+from shellwire.config import DaemonConfig
 
 logger = logging.getLogger(__name__)
 
@@ -165,7 +165,7 @@ class CommandExecutor:
                     try:
                         await on_output(
                             command_id,
-                            f"\n[kotha-shell] Command timed out after {timeout}s\n",
+                            f"\n[shellwire] Command timed out after {timeout}s\n",
                             "stderr",
                         )
                     except Exception:

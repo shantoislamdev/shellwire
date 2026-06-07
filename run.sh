@@ -10,4 +10,4 @@ if [ ! -d "$VENV_DIR" ]; then
     "$VENV_DIR/bin/pip" install -e ".[dev]"
 fi
 
-exec "$VENV_DIR/bin/python" -m kotha_shell "$@"
+exec "$VENV_DIR/bin/python" -m shellwire "$@"

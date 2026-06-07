@@ -18,7 +18,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
-_CLIENTS_FILE = Path(os.path.expanduser("~/.kotha-shell/clients.json"))
+_CLIENTS_FILE = Path(os.path.expanduser("~/.shellwire/clients.json"))
 
 
 @dataclass

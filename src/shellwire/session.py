@@ -16,7 +16,7 @@ import time
 from dataclasses import dataclass, field
 from typing import Any, Callable, Coroutine, Dict, List, Optional
 
-from kotha_shell.config import DaemonConfig
+from shellwire.config import DaemonConfig
 
 logger = logging.getLogger(__name__)
 

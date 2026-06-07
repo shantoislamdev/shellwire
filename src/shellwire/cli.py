@@ -1,6 +1,6 @@
-"""Click CLI for kotha-shell.
+"""Click CLI for shellwire.
 
-Provides the ``kotha`` command with subcommands for starting, stopping,
+Provides the ``shellwire`` command with subcommands for starting, stopping,
 and managing the daemon, tokens, and clients.
 """
 
@@ -15,8 +15,8 @@ from typing import Optional
 
 import click
 
-from kotha_shell import __version__
-from kotha_shell.auth import (
+from shellwire import __version__
+from shellwire.auth import (
     ensure_token,
     is_running,
     read_pid,
@@ -25,11 +25,11 @@ from kotha_shell.auth import (
     rotate_token,
     write_pid,
 )
-from kotha_shell.client_manager import ClientManager
-from kotha_shell.config import DaemonConfig
-from kotha_shell.server import KothaServer
+from shellwire.client_manager import ClientManager
+from shellwire.config import DaemonConfig
+from shellwire.server import KothaServer
 
-logger = logging.getLogger("kotha_shell")
+logger = logging.getLogger("shellwire")
 
 
 def _setup_logging(level: str, log_file: Optional[str] = None) -> None:
@@ -41,7 +41,7 @@ def _setup_logging(level: str, log_file: Optional[str] = None) -> None:
         datefmt="%Y-%m-%d %H:%M:%S",
     )
 
-    root = logging.getLogger("kotha_shell")
+    root = logging.getLogger("shellwire")
     root.setLevel(numeric_level)
 
     # Always log to stderr.
@@ -65,7 +65,7 @@ def _print_banner(host: str, port: int, token: str, first_start: bool) -> None:
     """Print the startup banner."""
     click.echo()
     click.secho("  ╔══════════════════════════════════════╗", fg="cyan")
-    click.secho("  ║         kotha-shell v{:<15s} ║".format(__version__), fg="cyan")
+    click.secho("  ║           shellwire v{:<15s} ║".format(__version__), fg="cyan")
     click.secho("  ╚══════════════════════════════════════╝", fg="cyan")
     click.echo()
     click.echo(f"  🌐 Listening on ws://{host}:{port}")
@@ -77,10 +77,10 @@ def _print_banner(host: str, port: int, token: str, first_start: bool) -> None:
         click.echo(f"     {token}")
         click.echo()
         click.secho("  This token persists across restarts.", fg="green")
-        click.secho("  Use 'kotha token rotate' to generate a new one.", fg="green")
+        click.secho("  Use 'shellwire token rotate' to generate a new one.", fg="green")
     else:
         click.echo("  🔑 Using existing auth token.")
-        click.echo("     Run 'kotha token show' to view it.")
+        click.echo("     Run 'shellwire token show' to view it.")
 
     click.echo()
     click.echo("  Press Ctrl+C to stop.")
@@ -93,9 +93,9 @@ def _print_banner(host: str, port: int, token: str, first_start: bool) -> None:
 
 
 @click.group()
-@click.version_option(version=__version__, prog_name="kotha-shell")
+@click.version_option(version=__version__, prog_name="shellwire")
 def main() -> None:
-    """kotha-shell: Remote shell bridge for KothaCode."""
+    """shellwire: Remote shell bridge for KothaCode."""
     pass
 
 
@@ -133,11 +133,11 @@ def main() -> None:
     help="Logging verbosity.",
 )
 def start(port: int, host: str, daemon: bool, log_level: str) -> None:
-    """Start the kotha-shell daemon."""
+    """Start the shellwire daemon."""
     if is_running():
         pid = read_pid()
         click.secho(f"Daemon already running (PID {pid}).", fg="yellow")
-        click.echo("Use 'kotha stop' first, or 'kotha status' to check.")
+        click.echo("Use 'shellwire stop' first, or 'shellwire status' to check.")
         sys.exit(1)
 
     config = DaemonConfig(host=host, port=port, log_level=log_level)
@@ -243,7 +243,7 @@ def status() -> None:
 @main.command("version")
 def version_cmd() -> None:
     """Print the version and exit."""
-    click.echo(f"kotha-shell {__version__}")
+    click.echo(f"shellwire {__version__}")
 
 
 # ======================================================================
@@ -292,7 +292,7 @@ def _show_token() -> None:
     """Display the stored token."""
     tok = read_token()
     if tok is None:
-        click.secho("No token found. Run 'kotha start' to generate one.", fg="yellow")
+        click.secho("No token found. Run 'shellwire start' to generate one.", fg="yellow")
         sys.exit(1)
     click.echo(tok)
 
@@ -337,7 +337,7 @@ def clients_revoke(client_id: str) -> None:
     """Revoke a client by its ID.
 
     Revoked clients cannot reconnect until un-revoked (by editing
-    ~/.kotha-shell/clients.json).
+    ~/.shellwire/clients.json).
     """
     mgr = ClientManager()
 
@@ -390,7 +390,7 @@ def _daemonize(
     except AttributeError:
         click.secho(
             "Daemon mode not supported on this platform. "
-            "Use 'kotha start' without --daemon.",
+            "Use 'shellwire start' without --daemon.",
             fg="red",
         )
         sys.exit(1)

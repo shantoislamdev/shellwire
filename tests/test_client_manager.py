@@ -1,7 +1,7 @@
 import pytest
 from unittest.mock import AsyncMock, patch
 
-from kotha_shell.client_manager import ClientManager
+from shellwire.client_manager import ClientManager
 
 
 @pytest.mark.asyncio

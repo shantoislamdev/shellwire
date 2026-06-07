@@ -1,4 +1,4 @@
-"""WebSocket server – the heart of kotha-shell.
+"""WebSocket server – the heart of shellwire.
 
 Ties together authentication, command execution, session management,
 and client tracking behind a single WebSocket endpoint with an HTTP
@@ -20,12 +20,12 @@ from typing import Any, Dict, Optional
 import websockets
 from websockets.http11 import Request, Response
 
-from kotha_shell import __version__
-from kotha_shell.auth import validate_token
-from kotha_shell.client_manager import ClientManager
-from kotha_shell.config import DaemonConfig
-from kotha_shell.executor import CommandExecutor
-from kotha_shell.protocol import (
+from shellwire import __version__
+from shellwire.auth import validate_token
+from shellwire.client_manager import ClientManager
+from shellwire.config import DaemonConfig
+from shellwire.executor import CommandExecutor
+from shellwire.protocol import (
     ErrorMessage,
     OutputMessage,
     PongMessage,
@@ -38,7 +38,7 @@ from kotha_shell.protocol import (
     serialize,
     validate_message,
 )
-from kotha_shell.session import SessionManager
+from shellwire.session import SessionManager
 
 logger = logging.getLogger(__name__)
 
@@ -469,7 +469,7 @@ class KothaServer:
                 pass
 
         logger.info(
-            "Starting kotha-shell v%s on %s:%d",
+            "Starting shellwire v%s on %s:%d",
             __version__,
             self._config.host,
             self._config.port,

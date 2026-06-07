@@ -1,8 +1,8 @@
-# kotha-shell
+# shellwire
 
 **WebSocket daemon for remote shell access from KothaCode.**
 
-`kotha-shell` runs in a remote environment, providing a WebSocket bridge that lets the [KothaCode](https://github.com/Amikotha/kotha-shell) Android app execute shell commands with full Linux access.
+`shellwire` runs in a remote environment, providing a WebSocket bridge that lets the [KothaCode](https://github.com/shantoislamdev/shellwire) Android app execute shell commands with full Linux access.
 
 ## Features
 
@@ -17,14 +17,14 @@
 
 ```bash
 # In remote environment
-pip install kotha-shell
+pip install shellwire
 ```
 
 Or install from source:
 
 ```bash
-git clone https://github.com/Amikotha/kotha-shell.git
-cd kotha-shell
+git clone https://github.com/shantoislamdev/shellwire.git
+cd shellwire
 pip install -e ".[dev]"
 ```
 
@@ -43,19 +43,19 @@ If you clone the repository directly, you can use the included runner scripts wh
 
 ```bash
 # Start the daemon (foreground)
-kotha start
+shellwire start
 
 # Start as background daemon
-kotha start --daemon
+shellwire start --daemon
 
 # Check status
-kotha status
+shellwire status
 
 # View your auth token
-kotha token show
+shellwire token show
 
 # Stop the daemon
-kotha stop
+shellwire stop
 ```
 
 On first start, a stable auth token is generated and displayed. **Save it** — you'll need it in the KothaCode app.
@@ -64,23 +64,23 @@ On first start, a stable auth token is generated and displayed. **Save it** — 
 
 | Command | Description |
 |---|---|
-| `kotha start` | Start the daemon |
-| `kotha start --daemon` | Start in background |
-| `kotha start --port 8080` | Use a custom port |
-| `kotha run` | Run in foreground (alias) |
-| `kotha stop` | Stop the running daemon |
-| `kotha status` | Check if daemon is running |
-| `kotha version` | Print version |
-| `kotha token` | Show the auth token |
-| `kotha token show` | Show the auth token |
-| `kotha token rotate` | Generate a new token |
-| `kotha clients list` | List known clients |
-| `kotha clients revoke ID` | Revoke a client |
+| `shellwire start` | Start the daemon |
+| `shellwire start --daemon` | Start in background |
+| `shellwire start --port 8080` | Use a custom port |
+| `shellwire run` | Run in foreground (alias) |
+| `shellwire stop` | Stop the running daemon |
+| `shellwire status` | Check if daemon is running |
+| `shellwire version` | Print version |
+| `shellwire token` | Show the auth token |
+| `shellwire token show` | Show the auth token |
+| `shellwire token rotate` | Generate a new token |
+| `shellwire clients list` | List known clients |
+| `shellwire clients revoke ID` | Revoke a client |
 
 ## Connecting from KothaCode
 
-1. Install `kotha-shell` in remote environment
-2. Run `kotha start`
+1. Install `shellwire` in remote environment
+2. Run `shellwire start`
 3. Copy the auth token shown on first start
 4. In KothaCode app, go to **Settings → Shell Connection**
 5. Set host to `127.0.0.1`, port to `7842`
@@ -95,7 +95,7 @@ All communication uses JSON over WebSocket. The client must send an `auth` messa
 {
   "type": "auth",
   "token": "your-auth-token",
-  "client_id": "kothacode-android-abc123"
+  "client_id": "myapp-android-abc123"
 }
 ```
 
@@ -144,7 +144,7 @@ All configuration is via CLI flags. Defaults:
 | `--port` | `7842` | Listen port |
 | `--log-level` | `INFO` | Logging verbosity |
 
-Data files are stored in `~/.kotha-shell/`:
+Data files are stored in `~/.shellwire/`:
 - `auth.token` — the auth token
 - `daemon.pid` — PID file
 - `daemon.log` — log file
@@ -160,7 +160,7 @@ pip install -e ".[dev]"
 pytest
 
 # Run with coverage
-pytest --cov=kotha_shell
+pytest --cov=shellwire
 ```
 
 ## License

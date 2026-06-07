@@ -9,7 +9,7 @@ from pathlib import Path
 
 @dataclass
 class DaemonConfig:
-    """Configuration for the kotha-shell WebSocket daemon.
+    """Configuration for the shellwire WebSocket daemon.
 
     All values have sane defaults for a Unix environment.
     Paths are expanded at access time via properties.
@@ -22,7 +22,7 @@ class DaemonConfig:
     max_output_size: int = 512_000  # 512 KB
     max_sessions: int = 8
     log_level: str = "INFO"
-    log_file: str = "~/.kotha-shell/daemon.log"
+    log_file: str = "~/.shellwire/daemon.log"
 
     @property
     def resolved_log_file(self) -> Path:
@@ -31,8 +31,8 @@ class DaemonConfig:
 
     @property
     def data_dir(self) -> Path:
-        """Return the data directory (``~/.kotha-shell``)."""
-        return Path(os.path.expanduser("~/.kotha-shell"))
+        """Return the data directory (``~/.shellwire``)."""
+        return Path(os.path.expanduser("~/.shellwire"))
 
     def ensure_dirs(self) -> None:
         """Create required directories if they don't exist."""

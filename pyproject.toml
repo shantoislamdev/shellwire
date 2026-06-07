@@ -3,14 +3,14 @@ requires = ["setuptools>=64", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "kotha-shell"
+name = "shellwire"
 version = "0.1.0"
 description = "WebSocket daemon for remote shell access from KothaCode"
 readme = "README.md"
 license = {text = "Apache-2.0"}
 requires-python = ">=3.8"
 authors = [
-    {name = "Amikotha", email = "ceo@amikotha.com"},
+    {name = "Shanto Islam", email = "shantoislamdev@gmail.com"},
 ]
 maintainers = [
     {name = "@shantoislamdev"},
@@ -36,8 +36,8 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/Amikotha/kotha-shell"
-Repository = "https://github.com/Amikotha/kotha-shell.git"
+Homepage = "https://github.com/shantoislamdev/shellwire"
+Repository = "https://github.com/shantoislamdev/shellwire.git"
 
 [project.optional-dependencies]
 dev = [
@@ -47,8 +47,8 @@ dev = [
 ]
 
 [project.scripts]
-kotha = "kotha_shell.cli:main"
-kotha-shell = "kotha_shell.cli:main"
+shellwire = "shellwire.cli:main"
+sw = "shellwire.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

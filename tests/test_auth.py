@@ -1,10 +1,10 @@
 import pytest
 import os
-from kotha_shell.auth import ensure_token, read_token, rotate_token, validate_token
+from shellwire.auth import ensure_token, read_token, rotate_token, validate_token
 
 def test_auth_token_generation(tmp_path, monkeypatch):
-    monkeypatch.setattr("kotha_shell.auth.TOKEN_DIR", tmp_path)
-    monkeypatch.setattr("kotha_shell.auth.TOKEN_FILE", tmp_path / "auth.token")
+    monkeypatch.setattr("shellwire.auth.TOKEN_DIR", tmp_path)
+    monkeypatch.setattr("shellwire.auth.TOKEN_FILE", tmp_path / "auth.token")
     
     token = ensure_token()
     assert token is not None
