@@ -2,7 +2,7 @@
 
 **WebSocket daemon for Termux shell access from KothaCode.**
 
-`kotha-shell` runs in [Termux](https://termux.dev/) on Android, providing a WebSocket bridge that lets the [KothaCode](https://github.com/shantoislamdev/KothaCode) Android app execute shell commands with full Linux access.
+`kotha-shell` runs in [Termux](https://termux.dev/) on Android, providing a WebSocket bridge that lets the [KothaCode](https://github.com/Amikotha/kotha-shell) Android app execute shell commands with full Linux access.
 
 ## Features
 
@@ -23,10 +23,21 @@ pip install kotha-shell
 Or install from source:
 
 ```bash
-git clone https://github.com/shantoislamdev/KothaCode.git
-cd KothaCode/kotha-shell
+git clone https://github.com/Amikotha/kotha-shell.git
+cd kotha-shell
 pip install -e ".[dev]"
 ```
+
+### Auto-venv Runners
+
+If you clone the repository directly, you can use the included runner scripts which will automatically create a virtual environment (`venv`) and install dependencies for you. This allows seamless execution without manually setting up your environment:
+
+- **Unix / Termux**:
+  - `./run.sh` — Bootstraps the daemon inside `venv`
+  - `./test.sh` — Runs the test suite inside `venv`
+- **Windows**:
+  - `run.bat` — Bootstraps the daemon inside `venv`
+  - `test.bat` — Runs the test suite inside `venv`
 
 ## Quick Start
 
@@ -154,4 +165,4 @@ pytest --cov=kotha_shell
 
 ## License
 
-MIT
+Apache 2.0
