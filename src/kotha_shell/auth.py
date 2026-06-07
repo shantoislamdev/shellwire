@@ -2,7 +2,7 @@
 
 The auth token is generated **once** on first daemon start and persists across
 restarts.  Only ``kotha token rotate`` replaces it.  This avoids breaking
-the KothaCode app every time Termux reboots.
+the KothaCode app every time the host system reboots.
 
 All files are stored under ``~/.kotha-shell/``.
 """
@@ -172,7 +172,7 @@ def is_running() -> bool:
         remove_pid()
         return False
     except PermissionError:
-        # Process exists but we can't signal it (shouldn't happen in Termux).
+        # Process exists but we can't signal it (shouldn't happen in user-space).
         return True
     except OSError:
         return False

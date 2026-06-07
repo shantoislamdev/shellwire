@@ -95,7 +95,7 @@ def _print_banner(host: str, port: int, token: str, first_start: bool) -> None:
 @click.group()
 @click.version_option(version=__version__, prog_name="kotha-shell")
 def main() -> None:
-    """kotha-shell: Termux shell bridge for KothaCode."""
+    """kotha-shell: Remote shell bridge for KothaCode."""
     pass
 
 
@@ -384,7 +384,7 @@ def _run_foreground(
 def _daemonize(
     config: DaemonConfig, token: str, first_start: bool
 ) -> None:
-    """Fork to background (Unix/Termux only)."""
+    """Fork to background (Unix/Linux only)."""
     try:
         pid = os.fork()
     except AttributeError:

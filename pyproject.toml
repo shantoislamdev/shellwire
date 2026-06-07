@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "kotha-shell"
 version = "0.1.0"
-description = "WebSocket daemon for Termux shell access from KothaCode"
+description = "WebSocket daemon for remote shell access from KothaCode"
 readme = "README.md"
 license = {text = "Apache-2.0"}
 requires-python = ">=3.8"

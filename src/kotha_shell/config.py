@@ -11,7 +11,7 @@ from pathlib import Path
 class DaemonConfig:
     """Configuration for the kotha-shell WebSocket daemon.
 
-    All values have sane defaults for a Termux environment.
+    All values have sane defaults for a Unix environment.
     Paths are expanded at access time via properties.
     """
 
