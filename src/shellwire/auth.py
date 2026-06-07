@@ -1,8 +1,8 @@
 """Stable token management and PID file helpers.
 
 The auth token is generated **once** on first daemon start and persists across
-restarts.  Only ``shellwire token rotate`` replaces it.  This avoids breaking
-the KothaCode app every time the host system reboots.
+restarts. Only ``shellwire token rotate`` replaces it. This provides stable
+authentication across daemon restarts.
 
 All files are stored under ``~/.shellwire/``.
 """

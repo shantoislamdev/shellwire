@@ -1,22 +1,22 @@
 # shellwire
 
-**WebSocket daemon for remote shell access from KothaCode.**
+**WebSocket daemon for remote shell access.**
 
-`shellwire` runs in a remote environment, providing a WebSocket bridge that lets the [KothaCode](https://github.com/shantoislamdev/shellwire) Android app execute shell commands with full Linux access.
+`shellwire` runs as a WebSocket server, providing a bridge that lets remote clients execute shell commands with full system access. It's designed to be a generic, client-agnostic solution that any WebSocket-compatible application can connect to.
 
 ## Features
 
-- 🔐 **Stable token auth** — token generated once, persists across restarts
-- 🔌 **Single client** — one active connection at a time, with reconnection support
-- ⚡ **Concurrent execution** — up to 4 simultaneous commands
-- 📺 **Interactive sessions** — long-running processes with stdin/stdout streaming
-- 🏥 **Health endpoint** — HTTP GET `/health` on the same port
-- 🧹 **Clean process kill** — process group kill ensures no orphaned children
+- **Stable token auth** — token generated once, persists across restarts
+- **Single client** — one active connection at a time, with reconnection support
+- **Concurrent execution** — up to 4 simultaneous commands
+- **Interactive sessions** — long-running processes with stdin/stdout streaming
+- **Health endpoint** — HTTP GET `/health` on the same port
+- **Clean process kill** — process group kill ensures no orphaned children
 
 ## Installation
 
 ```bash
-# In remote environment
+# Via pip
 pip install shellwire
 ```
 
@@ -30,7 +30,7 @@ pip install -e ".[dev]"
 
 ### Auto-venv Runners
 
-If you clone the repository directly, you can use the included runner scripts which will automatically create a virtual environment (`venv`) and install dependencies for you. This allows seamless execution without manually setting up your environment:
+If you clone the repository directly, you can use the included runner scripts which will automatically create a virtual environment (`venv`) and install dependencies for you:
 
 - **Unix / Linux**:
   - `./run.sh` — Bootstraps the daemon inside `venv`
@@ -58,7 +58,7 @@ shellwire token show
 shellwire stop
 ```
 
-On first start, a stable auth token is generated and displayed. **Save it** — you'll need it in the KothaCode app.
+On first start, a stable auth token is generated and displayed. **Save it** — you'll need it to connect your client.
 
 ## Commands Reference
 
@@ -77,15 +77,20 @@ On first start, a stable auth token is generated and displayed. **Save it** — 
 | `shellwire clients list` | List known clients |
 | `shellwire clients revoke ID` | Revoke a client |
 
-## Connecting from KothaCode
+## Connecting a Client
 
-1. Install `shellwire` in remote environment
-2. Run `shellwire start`
+To connect a client to shellwire:
+
+1. Install `shellwire` in your target environment
+2. Run `shellwire start` to start the daemon
 3. Copy the auth token shown on first start
-4. In KothaCode app, go to **Settings → Shell Connection**
-5. Set host to `127.0.0.1`, port to `7842`
-6. Paste the auth token
-7. Tap **Connect**
+4. In your client application, configure:
+   - **Host**: The IP address or hostname where shellwire is running (default: `127.0.0.1`)
+   - **Port**: The port shellwire is listening on (default: `7842`)
+   - **Token**: The auth token from step 3
+5. Connect via WebSocket
+
+The protocol is documented below for client implementers.
 
 ## Protocol
 
@@ -95,7 +100,7 @@ All communication uses JSON over WebSocket. The client must send an `auth` messa
 {
   "type": "auth",
   "token": "your-auth-token",
-  "client_id": "myapp-android-abc123"
+  "client_id": "my-client-abc123"
 }
 ```
 

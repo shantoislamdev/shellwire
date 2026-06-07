@@ -27,7 +27,7 @@ from shellwire.auth import (
 )
 from shellwire.client_manager import ClientManager
 from shellwire.config import DaemonConfig
-from shellwire.server import KothaServer
+from shellwire.server import ShellwireServer
 
 logger = logging.getLogger("shellwire")
 
@@ -68,18 +68,18 @@ def _print_banner(host: str, port: int, token: str, first_start: bool) -> None:
     click.secho("  ║           shellwire v{:<15s} ║".format(__version__), fg="cyan")
     click.secho("  ╚══════════════════════════════════════╝", fg="cyan")
     click.echo()
-    click.echo(f"  🌐 Listening on ws://{host}:{port}")
-    click.echo(f"  🏥 Health check  http://{host}:{port}/health")
+    click.echo(f"  Listening on ws://{host}:{port}")
+    click.echo(f"  Health check  http://{host}:{port}/health")
     click.echo()
 
     if first_start:
-        click.secho("  🔑 Auth token (save this!):", fg="yellow")
+        click.secho("  Auth token (save this!):", fg="yellow")
         click.echo(f"     {token}")
         click.echo()
         click.secho("  This token persists across restarts.", fg="green")
         click.secho("  Use 'shellwire token rotate' to generate a new one.", fg="green")
     else:
-        click.echo("  🔑 Using existing auth token.")
+        click.echo("  Using existing auth token.")
         click.echo("     Run 'shellwire token show' to view it.")
 
     click.echo()
@@ -95,7 +95,7 @@ def _print_banner(host: str, port: int, token: str, first_start: bool) -> None:
 @click.group()
 @click.version_option(version=__version__, prog_name="shellwire")
 def main() -> None:
-    """shellwire: Remote shell bridge for KothaCode."""
+    """shellwire: WebSocket daemon for remote shell access."""
     pass
 
 
@@ -283,7 +283,7 @@ def token_rotate() -> None:
 
     if is_running():
         click.secho(
-            "  ⚠  Daemon is running. Restart it for the new token to take effect.",
+            "  Warning: Daemon is running. Restart it for the new token to take effect.",
             fg="yellow",
         )
 
@@ -350,7 +350,7 @@ def clients_revoke(client_id: str) -> None:
 
     if is_running():
         click.secho(
-            "  ⚠  If the client is currently connected, "
+            "  Warning: If the client is currently connected, "
             "it will be disconnected when the daemon processes the next request.",
             fg="yellow",
         )
@@ -369,7 +369,7 @@ def _run_foreground(
     _print_banner(config.host, config.port, token, first_start)
 
     write_pid(os.getpid())
-    server = KothaServer(config)
+    server = ShellwireServer(config)
 
     try:
         asyncio.run(server.serve())
@@ -423,7 +423,7 @@ def _daemonize(
     _setup_logging(config.log_level, config.log_file)
     write_pid(os.getpid())
 
-    server = KothaServer(config)
+    server = ShellwireServer(config)
     try:
         asyncio.run(server.serve())
     finally:

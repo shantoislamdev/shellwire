@@ -43,12 +43,12 @@ from shellwire.session import SessionManager
 logger = logging.getLogger(__name__)
 
 
-class KothaServer:
-    """WebSocket server that bridges shell commands from KothaCode.
+class ShellwireServer:
+    """WebSocket server for remote shell command execution.
 
     Lifecycle::
 
-        server = KothaServer(config)
+        server = ShellwireServer(config)
         await server.serve()          # blocks until shutdown
     """
 

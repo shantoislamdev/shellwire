@@ -5,13 +5,13 @@ import pytest
 import websockets
 
 from shellwire.config import DaemonConfig
-from shellwire.server import KothaServer
+from shellwire.server import ShellwireServer
 
 
 @pytest.mark.asyncio
 async def test_health_check_endpoint():
     config = DaemonConfig()
-    server = KothaServer(config)
+    server = ShellwireServer(config)
     
     mock_websocket = AsyncMock()
     mock_websocket.request.path = "/health"
@@ -26,7 +26,7 @@ async def test_health_check_endpoint():
 @pytest.mark.asyncio
 async def test_invalid_auth():
     config = DaemonConfig()
-    server = KothaServer(config)
+    server = ShellwireServer(config)
     
     mock_websocket = AsyncMock()
     

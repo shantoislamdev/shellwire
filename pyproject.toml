@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "shellwire"
 version = "0.1.0"
-description = "WebSocket daemon for remote shell access from KothaCode"
+description = "A WebSocket daemon for remote shell execution and interactive terminal sessions"
 readme = "README.md"
 license = {text = "Apache-2.0"}
 requires-python = ">=3.8"
