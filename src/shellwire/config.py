@@ -18,6 +18,7 @@ class DaemonConfig:
     host: str = "127.0.0.1"
     port: int = 7842
     max_concurrent_commands: int = 4
+    max_queue_size: int = 16
     default_timeout: int = 120
     max_output_size: int = 512_000  # 512 KB
     max_sessions: int = 8

@@ -168,6 +168,15 @@ class DaemonStoppingMessage:
     type: str = "daemon_stopping"
 
 
+@dataclass
+class CommandQueuedMessage:
+    """Notification that a command has been queued (not yet running)."""
+
+    id: str
+    position: int
+    type: str = "command_queued"
+
+
 # ---------------------------------------------------------------------------
 # Required fields per message type
 # ---------------------------------------------------------------------------

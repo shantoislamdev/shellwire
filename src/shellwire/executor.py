@@ -1,8 +1,9 @@
-"""One-shot command execution with process-group kill.
+"""One-shot command execution with queue-based dispatch.
 
 Commands run in their own process group (``os.setsid``) so that
 ``os.killpg`` can terminate the entire tree – shells, child processes,
-and all.  A semaphore caps concurrent commands.
+and all.  A worker pool caps concurrent commands, with overflow
+jobs queued in a bounded FIFO queue.
 """
 
 from __future__ import annotations
@@ -12,6 +13,7 @@ import logging
 import os
 import signal
 import time
+from dataclasses import dataclass
 from typing import Any, Callable, Coroutine, Dict, Optional
 
 from shellwire.config import DaemonConfig
@@ -23,8 +25,30 @@ OutputCallback = Callable[[str, str, str], Coroutine[Any, Any, None]]
 # (command_id, data, stream_name)
 
 
+class QueueFullError(Exception):
+    """Raised when the command queue is full and cannot accept more jobs."""
+
+    pass
+
+
+@dataclass
+class _QueuedJob:
+    """Internal representation of a queued command job."""
+
+    command_id: str
+    command: str
+    timeout: int
+    on_output: Optional[OutputCallback]
+    future: asyncio.Future
+    cancelled: bool = False
+
+
 class CommandExecutor:
-    """Execute one-shot shell commands with concurrency limiting.
+    """Execute one-shot shell commands with worker pool and queue.
+
+    Uses N worker coroutines (N = max_concurrent_commands) that pull jobs
+    from a bounded asyncio.Queue. When all workers are busy, new jobs are
+    queued. When the queue is also full, QueueFullError is raised.
 
     Each command runs inside its own process group so the full tree can be
     killed cleanly via SIGTERM → SIGKILL escalation.
@@ -32,14 +56,32 @@ class CommandExecutor:
 
     def __init__(self, config: DaemonConfig) -> None:
         self._config = config
-        self._semaphore = asyncio.Semaphore(config.max_concurrent_commands)
+        self._queue: asyncio.Queue[_QueuedJob] = asyncio.Queue(
+            maxsize=config.max_queue_size
+        )
         self._active: Dict[str, asyncio.subprocess.Process] = {}
         self._cancelled: set = set()
+        self._workers: list = [
+            asyncio.ensure_future(self._worker_loop())
+            for _ in range(config.max_concurrent_commands)
+        ]
 
     @property
     def active_count(self) -> int:
         """Number of commands currently running."""
         return len(self._active)
+
+    @property
+    def queued_count(self) -> int:
+        """Number of commands waiting in the queue."""
+        return self._queue.qsize()
+
+    def get_queue_position(self, command_id: str) -> Optional[int]:
+        """Return the 1-based position of the command in the queue, or None if not queued."""
+        for i, job in enumerate(self._queue._queue):
+            if job.command_id == command_id:
+                return i + 1
+        return None
 
     # ------------------------------------------------------------------
     # Public API
@@ -55,6 +97,9 @@ class CommandExecutor:
     ) -> Dict[str, Any]:
         """Execute *command* and return its result.
 
+        If all workers are busy, the job is queued. If the queue is also
+        full, QueueFullError is raised.
+
         Args:
             command_id: Unique identifier for this invocation.
             command: Shell command string.
@@ -63,28 +108,66 @@ class CommandExecutor:
 
         Returns:
             A dict with ``exit_code`` and ``duration_ms``.
+
+        Raises:
+            QueueFullError: If all workers busy and queue is full.
         """
         effective_timeout = timeout if timeout is not None else self._config.default_timeout
 
-        async with self._semaphore:
-            return await self._run(command_id, command, effective_timeout, on_output)
+        # Create a future that will be resolved by the worker
+        future: asyncio.Future = asyncio.get_event_loop().create_future()
+        job = _QueuedJob(
+            command_id=command_id,
+            command=command,
+            timeout=effective_timeout,
+            on_output=on_output,
+            future=future,
+        )
+
+        # Try to enqueue the job
+        try:
+            self._queue.put_nowait(job)
+            logger.debug(
+                "Enqueued command %s (queue size: %d)",
+                command_id,
+                self._queue.qsize(),
+            )
+        except asyncio.QueueFull:
+            raise QueueFullError(
+                f"Queue full ({self._config.max_queue_size} pending jobs)"
+            )
+
+        # Wait for the worker to complete the job
+        return await future
 
     async def cancel(self, command_id: str) -> bool:
-        """Cancel a running command by its ID.
+        """Cancel a running or queued command by its ID.
 
         Returns:
-            ``True`` if the command was found and killed.
+            ``True`` if the command was found and cancelled.
         """
+        # Check if it's currently running
         proc = self._active.get(command_id)
-        if proc is None:
-            return False
+        if proc is not None:
+            self._cancelled.add(command_id)
+            await self._kill_process_tree(proc)
+            return True
 
-        self._cancelled.add(command_id)
-        await self._kill_process_tree(proc)
-        return True
+        # Check if it's in the queue (not yet started)
+        # We can't remove from asyncio.Queue easily, so mark it as cancelled
+        # and the worker will skip it when it picks it up
+        for job in list(self._queue._queue):  # Access internal deque
+            if job.command_id == command_id:
+                job.cancelled = True
+                if not job.future.done():
+                    job.future.cancel()
+                logger.debug("Cancelled queued command %s", command_id)
+                return True
+
+        return False
 
     async def wait_for_completion(self, timeout: float) -> int:
-        """Wait for active commands to finish, return count still running.
+        """Wait for active commands and queue to drain, return count still running.
 
         Args:
             timeout: Maximum seconds to wait.
@@ -93,13 +176,52 @@ class CommandExecutor:
             Number of commands still running after timeout.
         """
         deadline = time.monotonic() + timeout
-        while self._active and time.monotonic() < deadline:
+        while (self._active or not self._queue.empty()) and time.monotonic() < deadline:
             await asyncio.sleep(0.1)
         return len(self._active)
+
+    def shutdown(self) -> None:
+        """Cancel all worker tasks. Called during graceful shutdown."""
+        for worker in self._workers:
+            worker.cancel()
+        logger.debug("Cancelled %d worker tasks", len(self._workers))
 
     # ------------------------------------------------------------------
     # Internal
     # ------------------------------------------------------------------
+
+    async def _worker_loop(self) -> None:
+        """Worker coroutine that pulls jobs from the queue and executes them."""
+        try:
+            while True:
+                job = await self._queue.get()
+                try:
+                    # Skip if cancelled while in queue
+                    if job.cancelled:
+                        logger.debug("Skipping cancelled job %s", job.command_id)
+                        if not job.future.done():
+                            job.future.cancel()
+                        continue
+
+                    # Execute the command
+                    result = await self._run(
+                        job.command_id, job.command, job.timeout, job.on_output
+                    )
+                    if not job.future.done():
+                        job.future.set_result(result)
+                except Exception as exc:
+                    logger.error(
+                        "Worker error executing command %s",
+                        job.command_id,
+                        exc_info=True,
+                    )
+                    if not job.future.done():
+                        job.future.set_exception(exc)
+                finally:
+                    self._queue.task_done()
+        except asyncio.CancelledError:
+            logger.debug("Worker loop cancelled")
+            raise
 
     async def _run(
         self,

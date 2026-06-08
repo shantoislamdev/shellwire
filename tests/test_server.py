@@ -6,6 +6,7 @@ import pytest
 import websockets
 
 from shellwire.config import DaemonConfig
+from shellwire.executor import QueueFullError
 from shellwire.server import ShellwireServer
 
 
@@ -152,3 +153,145 @@ async def test_graceful_shutdown_kills_sessions():
     ) as mock_kill:
         await server._graceful_shutdown()
         mock_kill.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# Queue tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_queue_full_sends_error():
+    """Server sends QUEUE_FULL error when executor raises QueueFullError."""
+    config = DaemonConfig()
+    server = ShellwireServer(config)
+
+    mock_ws = AsyncMock()
+
+    with patch.object(
+        server._executor, "execute", side_effect=QueueFullError("Queue full (16 pending jobs)")
+    ):
+        await server._handle_execute(
+            {"id": "cmd-1", "command": "echo test", "timeout": 10},
+            mock_ws
+        )
+        
+        # Wait for the background task to complete
+        await asyncio.sleep(0.01)
+
+    # Verify error was sent
+    sent = json.loads(mock_ws.send.call_args[0][0])
+    assert sent["type"] == "error"
+    assert sent["code"] == "QUEUE_FULL"
+    assert "Queue full" in sent["message"]
+
+
+@pytest.mark.asyncio
+async def test_queued_notification():
+    """Server sends command_queued message when job enters queue."""
+    config = DaemonConfig(max_concurrent_commands=1, max_queue_size=4)
+    server = ShellwireServer(config)
+
+    mock_ws = AsyncMock()
+
+    # Mock executor to simulate queuing
+    with patch.object(server._executor, "execute", new_callable=AsyncMock) as mock_execute, \
+         patch.object(server._executor, "get_queue_position", return_value=2):
+        
+        mock_execute.return_value = {"exit_code": 0, "duration_ms": 100}
+        
+        await server._handle_execute(
+            {"id": "cmd-1", "command": "echo test", "timeout": 10},
+            mock_ws
+        )
+        
+        # Wait for background task
+        await asyncio.sleep(0.01)
+
+    # Verify both queued notification and result were sent
+    calls = [json.loads(call[0][0]) for call in mock_ws.send.call_args_list]
+    
+    # Should have command_queued message
+    queued_msgs = [m for m in calls if m.get("type") == "command_queued"]
+    assert len(queued_msgs) == 1
+    assert queued_msgs[0]["id"] == "cmd-1"
+    assert queued_msgs[0]["position"] == 2
+    
+    # Should also have result message
+    result_msgs = [m for m in calls if m.get("type") == "result"]
+    assert len(result_msgs) == 1
+
+
+@pytest.mark.asyncio
+async def test_no_queued_notification_on_immediate_execution():
+    """Server does NOT send command_queued when job runs immediately.
+    
+    Even if other jobs are in the queue, if THIS job is picked up immediately
+    by a worker, no queued notification should be sent.
+    """
+    config = DaemonConfig(max_concurrent_commands=2, max_queue_size=4)
+    server = ShellwireServer(config)
+
+    mock_ws = AsyncMock()
+
+    # Mock executor: job runs immediately (get_queue_position returns None)
+    with patch.object(server._executor, "execute", new_callable=AsyncMock) as mock_execute, \
+         patch.object(server._executor, "get_queue_position", return_value=None):
+        
+        mock_execute.return_value = {"exit_code": 0, "duration_ms": 50}
+        
+        await server._handle_execute(
+            {"id": "cmd-1", "command": "echo test", "timeout": 10},
+            mock_ws
+        )
+        
+        # Wait for background task
+        await asyncio.sleep(0.01)
+
+    # Verify result was sent but NO queued notification
+    calls = [json.loads(call[0][0]) for call in mock_ws.send.call_args_list]
+    
+    result_msgs = [m for m in calls if m.get("type") == "result"]
+    assert len(result_msgs) == 1
+    
+    queued_msgs = [m for m in calls if m.get("type") == "command_queued"]
+    assert len(queued_msgs) == 0
+
+
+@pytest.mark.asyncio
+async def test_cancelled_command_sends_error():
+    """Cancelled command sends CANCELLED error to client instead of hanging."""
+    config = DaemonConfig()
+    server = ShellwireServer(config)
+
+    mock_ws = AsyncMock()
+
+    # Mock executor.execute to raise CancelledError (simulates cancel() on queued job)
+    with patch.object(
+        server._executor, "execute",
+        side_effect=asyncio.CancelledError()
+    ):
+        await server._handle_execute(
+            {"id": "cmd-1", "command": "echo test", "timeout": 10},
+            mock_ws
+        )
+        await asyncio.sleep(0.01)
+
+    # Verify CANCELLED error was sent
+    calls = [json.loads(call[0][0]) for call in mock_ws.send.call_args_list]
+    error_msgs = [m for m in calls if m.get("type") == "error"]
+    assert len(error_msgs) == 1
+    assert error_msgs[0]["code"] == "CANCELLED"
+    assert error_msgs[0]["id"] == "cmd-1"
+
+
+@pytest.mark.asyncio
+async def test_graceful_shutdown_cancels_workers():
+    """Graceful shutdown calls executor.shutdown() to cancel worker tasks."""
+    config = DaemonConfig(shutdown_grace_period=0.1)
+    server = ShellwireServer(config)
+
+    with patch.object(server._executor, "shutdown") as mock_shutdown:
+        await server._graceful_shutdown()
+        mock_shutdown.assert_called_once()
+

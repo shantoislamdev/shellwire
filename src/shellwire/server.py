@@ -25,8 +25,9 @@ from shellwire import __version__
 from shellwire.auth import validate_token
 from shellwire.client_manager import ClientManager
 from shellwire.config import DaemonConfig
-from shellwire.executor import CommandExecutor
+from shellwire.executor import CommandExecutor, QueueFullError
 from shellwire.protocol import (
+    CommandQueuedMessage,
     DaemonStoppingMessage,
     ErrorMessage,
     OutputMessage,
@@ -309,6 +310,17 @@ class ShellwireServer:
             )
         )
 
+        # Yield to event loop so the task can start and potentially enqueue
+        await asyncio.sleep(0)
+
+        # If the job entered the queue (all workers busy), notify the client.
+        position = self._executor.get_queue_position(command_id)
+        if position is not None:
+            await self._send(
+                websocket,
+                CommandQueuedMessage(id=command_id, position=position),
+            )
+
     async def _execute_and_report(
         self,
         command_id: str,
@@ -329,6 +341,14 @@ class ShellwireServer:
                     exit_code=result["exit_code"],
                     duration_ms=result["duration_ms"],
                 ),
+            )
+        except QueueFullError as exc:
+            await self._send_error(
+                websocket, command_id, str(exc), "QUEUE_FULL"
+            )
+        except asyncio.CancelledError:
+            await self._send_error(
+                websocket, command_id, "Command cancelled", "CANCELLED"
             )
         except Exception as exc:
             await self._send_error(
@@ -500,6 +520,9 @@ class ShellwireServer:
         # Kill all sessions.
         logger.info("Shutdown: killing sessions")
         await self._session_manager.kill_all()
+
+        # Shutdown executor workers
+        self._executor.shutdown()
 
         # Close the WebSocket connection.
         if ws is not None:
