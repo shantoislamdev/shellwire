@@ -33,6 +33,7 @@ classifiers = [
 dependencies = [
     "websockets>=12.0",
     "click>=8.0",
+    "ptyprocess>=0.7.0; sys_platform != 'win32'",
 ]
 
 [project.urls]

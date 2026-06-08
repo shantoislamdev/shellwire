@@ -9,9 +9,11 @@
 - **Stable token auth** — token generated once, persists across restarts
 - **Single client** — one active connection at a time, with reconnection support
 - **Concurrent execution** — up to 4 simultaneous commands
-- **Interactive sessions** — long-running processes with stdin/stdout streaming
+- **Interactive PTY sessions (POSIX)** — full pseudo-terminal support with dynamic resizing
+- **Environment Tracking** — persistent working directory (CWD) and exported environment variables across commands
+- **Compound Command Rewriting** — automatically rewrites bash chains (e.g. `A && B &` -> `A && { B & }`) for standard backgrounding
+- **Robust Process Isolation** — prevents zombie processes via process-group escalation kills (SIGTERM → SIGKILL) and protects against runaway output
 - **Health endpoint** — HTTP GET `/health` on the same port
-- **Clean process kill** — process group kill ensures no orphaned children
 
 ## Installation
 
@@ -111,7 +113,24 @@ Then send commands:
   "type": "execute",
   "id": "cmd-001",
   "command": "ls -la",
+  "cwd": "/var/log",
+  "env": {"FOO": "bar"},
+  "stdin_data": "optional input\n",
+  "is_pty": true,
+  "cols": 120,
+  "rows": 40,
   "timeout": 30
+}
+```
+
+Interactive PTY sessions can be dynamically resized:
+
+```json
+{
+  "type": "resize",
+  "id": "cmd-001",
+  "cols": 150,
+  "rows": 50
 }
 ```
 
@@ -138,6 +157,13 @@ curl http://127.0.0.1:7842/health
   "python_version": "3.11.4"
 }
 ```
+
+## Client-Side Utilities
+
+If you are building a Python client that connects to `shellwire`, you can import and use several robust utilities we export for downstream consumers:
+
+- **`shellwire.output.strip_ansi(text: str) -> str`**: Fast ECMA-48 compliant regex utility for stripping terminal ANSI colors and escape sequences from output.
+- **`shellwire.output.truncate_output(text: str, max_chars: int) -> tuple[str, bool]`**: Safely truncates massive output payloads while preserving the first 40% and last 60% of the stream so critical context isn't lost.
 
 ## Configuration
 
