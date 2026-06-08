@@ -20,11 +20,23 @@ class DaemonConfig:
     max_concurrent_commands: int = 4
     max_queue_size: int = 16
     default_timeout: int = 120
-    max_output_size: int = 512_000  # 512 KB
     max_sessions: int = 8
     shutdown_grace_period: float = 5.0  # seconds to wait for commands before killing
     log_level: str = "INFO"
     log_file: str = "~/.shellwire/daemon.log"
+
+    # Output processing
+    max_output_size: int = 512_000  # 512 KB (streaming byte cap)
+    max_output_chars: int = 50_000  # head/tail truncation threshold for accumulated output
+    # NOTE: No strip_ansi config — ANSI stripping is client-side (see output.py)
+
+    # Shell execution
+    shell_path: str = ""  # override shell binary (default: auto-detect via $SHELL)
+    rewrite_compound_background: bool = True  # fix A && B & subshell-wait trap
+
+    # Session settings
+    session_idle_timeout: int = 3600  # kill idle sessions after 1 hour (0 = disabled)
+    enable_pty: bool = True  # allow PTY sessions (requires ptyprocess)
 
     @property
     def resolved_log_file(self) -> Path:

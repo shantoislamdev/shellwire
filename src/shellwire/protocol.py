@@ -35,6 +35,9 @@ class ExecuteMessage:
     id: str
     command: str
     timeout: int = 120
+    cwd: str = ""  # working directory (empty = inherit daemon cwd)
+    env: Optional[Dict[str, str]] = None  # extra environment variables
+    stdin_data: str = ""  # data to pipe to stdin before execution
     type: str = "execute"
 
 
@@ -44,6 +47,9 @@ class StartSessionMessage:
 
     id: str
     command: str
+    use_pty: bool = False  # spawn behind a pseudo-terminal
+    cols: int = 80  # initial terminal width (PTY mode only)
+    rows: int = 24  # initial terminal height (PTY mode only)
     type: str = "start_session"
 
 
@@ -53,7 +59,18 @@ class SendInputMessage:
 
     id: str
     data: str
+    close_stdin: bool = False  # close stdin after writing (send EOF)
     type: str = "send_input"
+
+
+@dataclass
+class ResizeMessage:
+    """Resize the PTY terminal of a running session."""
+
+    id: str
+    cols: int
+    rows: int
+    type: str = "resize"
 
 
 @dataclass
@@ -187,6 +204,7 @@ _REQUIRED_FIELDS: Dict[str, List[str]] = {
     "start_session": ["id", "command"],
     "send_input": ["id", "data"],
     "kill_session": ["id"],
+    "resize": ["id", "cols", "rows"],
     "list_sessions": [],
     "ping": [],
     "daemon_stopping": [],

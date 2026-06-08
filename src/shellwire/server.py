@@ -61,7 +61,7 @@ class ShellwireServer:
         self._session_manager = SessionManager(config)
         self._client_manager = ClientManager()
         self._start_time = time.time()
-        self._shell = os.environ.get("SHELL", "/bin/sh")
+        self._shell = config.shell_path or os.environ.get("SHELL", "/bin/sh")
         self._shutting_down: bool = False
 
     # ------------------------------------------------------------------
@@ -258,6 +258,7 @@ class ShellwireServer:
             "start_session": self._handle_start_session,
             "send_input": self._handle_send_input,
             "kill_session": self._handle_kill_session,
+            "resize": self._handle_resize,
             "list_sessions": self._handle_list_sessions,
             "ping": self._handle_ping,
         }
@@ -294,6 +295,9 @@ class ShellwireServer:
         command_id = data["id"]
         command = data["command"]
         timeout = data.get("timeout", self._config.default_timeout)
+        cwd = data.get("cwd", "")
+        env = data.get("env")
+        stdin_data = data.get("stdin_data", "")
 
         async def on_output(
             cmd_id: str, text: str, stream: str
@@ -306,7 +310,8 @@ class ShellwireServer:
         # Run in a task so the command loop can continue receiving messages.
         asyncio.ensure_future(
             self._execute_and_report(
-                command_id, command, timeout, on_output, websocket
+                command_id, command, timeout, on_output, websocket,
+                cwd=cwd, env=env, stdin_data=stdin_data,
             )
         )
 
@@ -328,11 +333,17 @@ class ShellwireServer:
         timeout: int,
         on_output: Any,
         websocket: Any,
+        *,
+        cwd: str = "",
+        env: Optional[Dict[str, str]] = None,
+        stdin_data: str = "",
     ) -> None:
         """Execute a command and send the result."""
         try:
             result = await self._executor.execute(
-                command_id, command, timeout=timeout, on_output=on_output
+                command_id, command,
+                timeout=timeout, on_output=on_output,
+                cwd=cwd, env=env, stdin_data=stdin_data,
             )
             await self._send(
                 websocket,
@@ -361,6 +372,9 @@ class ShellwireServer:
         """Handle a ``start_session`` message."""
         session_id = data["id"]
         command = data["command"]
+        use_pty = data.get("use_pty", False)
+        cols = data.get("cols", 80)
+        rows = data.get("rows", 24)
 
         async def on_output(
             sid: str, text: str, stream: str
@@ -395,11 +409,22 @@ class ShellwireServer:
 
         try:
             session = await self._session_manager.start_session(
-                session_id, command, on_output=on_output
+                session_id, command,
+                on_output=on_output,
+                use_pty=use_pty,
+                cols=cols,
+                rows=rows,
             )
+            # Report PID — for PTY sessions, get pid from pty_bridge.
+            pid = -1
+            if session._is_pty and session._pty_bridge is not None:
+                pid = session._pty_bridge.pid
+            elif session.process is not None:
+                pid = session.process.pid
+
             await self._send(
                 websocket,
-                SessionStartedMessage(id=session_id, pid=session.process.pid),
+                SessionStartedMessage(id=session_id, pid=pid),
             )
         except ValueError as exc:
             await self._send_error(
@@ -412,9 +437,29 @@ class ShellwireServer:
         """Handle a ``send_input`` message."""
         session_id = data["id"]
         input_data = data["data"]
+        close_stdin = data.get("close_stdin", False)
 
         try:
-            await self._session_manager.send_input(session_id, input_data)
+            await self._session_manager.send_input(
+                session_id, input_data, close_stdin=close_stdin,
+            )
+        except (KeyError, RuntimeError) as exc:
+            await self._send_error(
+                websocket, session_id, str(exc), "SESSION_ERROR"
+            )
+
+    async def _handle_resize(
+        self, data: Dict[str, Any], websocket: Any
+    ) -> None:
+        """Handle a ``resize`` message for PTY sessions."""
+        session_id = data["id"]
+        cols = data["cols"]
+        rows = data["rows"]
+
+        try:
+            await self._session_manager.resize_session(
+                session_id, cols, rows,
+            )
         except (KeyError, RuntimeError) as exc:
             await self._send_error(
                 websocket, session_id, str(exc), "SESSION_ERROR"

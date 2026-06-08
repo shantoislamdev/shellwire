@@ -1,9 +1,18 @@
+# This file contains modified third-party code licensed under the MIT License. See NOTICE for details.
 """One-shot command execution with queue-based dispatch.
 
 Commands run in their own process group (``os.setsid``) so that
 ``os.killpg`` can terminate the entire tree – shells, child processes,
 and all.  A worker pool caps concurrent commands, with overflow
 jobs queued in a bounded FIFO queue.
+
+Robustness features:
+- PGID caching for kill fallback when process exits before kill
+- Process group liveness probing via signal 0
+- Output overflow kills the process (prevents pipe-buffer deadlock)
+- Grandchild-safe pipe drain (3 idle cycles after shell exit)
+- Compound background command rewriting (A && B & trap fix)
+- CWD and environment variable passthrough
 """
 
 from __future__ import annotations
@@ -40,11 +49,14 @@ class _QueuedJob:
     timeout: int
     on_output: Optional[OutputCallback]
     future: asyncio.Future
+    cwd: str = ""
+    env: Optional[Dict[str, str]] = None
+    stdin_data: str = ""
     cancelled: bool = False
 
 
 class CommandExecutor:
-    """Execute one-shot shell commands with worker pool and queue.
+    """Command executor with parallel workers and background queuing.
 
     Uses N worker coroutines (N = max_concurrent_commands) that pull jobs
     from a bounded asyncio.Queue. When all workers are busy, new jobs are
@@ -94,6 +106,9 @@ class CommandExecutor:
         *,
         timeout: Optional[int] = None,
         on_output: Optional[OutputCallback] = None,
+        cwd: str = "",
+        env: Optional[Dict[str, str]] = None,
+        stdin_data: str = "",
     ) -> Dict[str, Any]:
         """Execute *command* and return its result.
 
@@ -105,6 +120,9 @@ class CommandExecutor:
             command: Shell command string.
             timeout: Maximum wall-clock seconds (falls back to config default).
             on_output: Async callback invoked for each chunk of stdout/stderr.
+            cwd: Working directory for the command (empty = inherit).
+            env: Extra environment variables to merge into subprocess env.
+            stdin_data: Data to pipe to stdin before execution.
 
         Returns:
             A dict with ``exit_code`` and ``duration_ms``.
@@ -122,6 +140,9 @@ class CommandExecutor:
             timeout=effective_timeout,
             on_output=on_output,
             future=future,
+            cwd=cwd,
+            env=env,
+            stdin_data=stdin_data,
         )
 
         # Try to enqueue the job
@@ -205,7 +226,13 @@ class CommandExecutor:
 
                     # Execute the command
                     result = await self._run(
-                        job.command_id, job.command, job.timeout, job.on_output
+                        job.command_id,
+                        job.command,
+                        job.timeout,
+                        job.on_output,
+                        cwd=job.cwd,
+                        env=job.env,
+                        stdin_data=job.stdin_data,
                     )
                     if not job.future.done():
                         job.future.set_result(result)
@@ -229,16 +256,43 @@ class CommandExecutor:
         command: str,
         timeout: int,
         on_output: Optional[OutputCallback],
+        *,
+        cwd: str = "",
+        env: Optional[Dict[str, str]] = None,
+        stdin_data: str = "",
     ) -> Dict[str, Any]:
-        """Core execution loop."""
+        """Core execution loop with robustness patterns."""
         start = time.monotonic()
+
+        # Apply compound background rewriting
+        if self._config.rewrite_compound_background:
+            try:
+                from shellwire.shell_rewrite import rewrite_compound_background
+
+                command = rewrite_compound_background(command)
+            except Exception:
+                logger.debug("Shell rewrite failed, using original command", exc_info=True)
+
+        # Build subprocess environment
+        proc_env = None
+        if env:
+            proc_env = {**os.environ, **env}
+
+        # Resolve CWD (empty string = don't specify, inherit daemon's cwd)
+        proc_cwd = cwd if cwd else None
+
+        # Determine stdin mode
+        use_stdin_pipe = bool(stdin_data)
 
         try:
             proc = await asyncio.create_subprocess_shell(
                 command,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
+                stdin=asyncio.subprocess.PIPE if use_stdin_pipe else asyncio.subprocess.DEVNULL,
                 preexec_fn=os.setsid,
+                cwd=proc_cwd,
+                env=proc_env,
             )
         except OSError as exc:
             logger.error("Failed to spawn command '%s': %s", command, exc)
@@ -249,22 +303,83 @@ class CommandExecutor:
             }
 
         self._active[command_id] = proc
+
+        # Cache PGID immediately for kill fallback.
+        # If process exits before _kill_process_tree, os.getpgid(pid) fails
+        # with ProcessLookupError. The cached PGID is the fallback.
+        try:
+            proc._shellwire_pgid = os.getpgid(proc.pid)  # type: ignore[attr-defined]
+        except (ProcessLookupError, OSError):
+            proc._shellwire_pgid = None  # type: ignore[attr-defined]
+
+        # Pipe stdin data if provided
+        if use_stdin_pipe and stdin_data and proc.stdin is not None:
+            try:
+                proc.stdin.write(stdin_data.encode("utf-8"))
+                await proc.stdin.drain()
+                proc.stdin.close()
+            except (BrokenPipeError, OSError, ConnectionResetError):
+                logger.debug("Stdin pipe error for %s", command_id)
+
         total_output_size = 0
+        output_overflow = False
 
         async def _stream_pipe(
             pipe: asyncio.StreamReader, stream_name: str
         ) -> None:
-            nonlocal total_output_size
+            """Stream pipe with grandchild-safe drain.
+
+            After the shell process exits, allows 3 more idle read cycles
+            (~1.5s) before stopping — prevents indefinite hangs from
+            backgrounded grandchild processes that inherited the pipe.
+            """
+            nonlocal total_output_size, output_overflow
+            idle_after_exit = 0
+
             while True:
-                chunk = await pipe.read(4096)
+                # Use per-read timeout to avoid indefinite blocking on
+                # grandchild processes that inherit the pipe.
+                try:
+                    chunk = await asyncio.wait_for(pipe.read(4096), timeout=0.5)
+                except asyncio.TimeoutError:
+                    # Pipe read timed out — check if shell has exited.
+                    if proc.returncode is not None:
+                        idle_after_exit += 1
+                        if idle_after_exit >= 3:
+                            # Process dead + pipe idle for 3 cycles → stop
+                            # waiting on grandchild output.
+                            break
+                    continue
+
                 if not chunk:
                     break
+
                 total_output_size += len(chunk)
+
+                # Output overflow kills the process.
+                # Without this, the process keeps running, fills the pipe
+                # buffer, and eventually blocks forever.
                 if total_output_size > self._config.max_output_size:
-                    logger.warning(
-                        "Command %s exceeded max output size", command_id
-                    )
-                    break
+                    if not output_overflow:
+                        output_overflow = True
+                        logger.warning(
+                            "Command %s exceeded max output size (%d bytes), killing",
+                            command_id,
+                            self._config.max_output_size,
+                        )
+                        await self._kill_process_tree(proc)
+                        if on_output is not None:
+                            try:
+                                await on_output(
+                                    command_id,
+                                    f"\n[shellwire] Output truncated at "
+                                    f"{self._config.max_output_size} bytes\n",
+                                    "stderr",
+                                )
+                            except Exception:
+                                pass
+                    return
+
                 if on_output is not None:
                     try:
                         text = chunk.decode("utf-8", errors="replace")
@@ -319,6 +434,10 @@ class CommandExecutor:
         """Kill the process group: SIGTERM first, then SIGKILL after 3s.
 
         Uses ``os.killpg`` to hit the entire tree created via ``setsid``.
+
+        Enhancements for killing processes:
+        - PGID caching fallback (proc._shellwire_pgid)
+        - Process group liveness probe via signal 0
         """
         if proc.returncode is not None:
             return  # Already exited.
@@ -326,21 +445,25 @@ class CommandExecutor:
         pid = proc.pid
         try:
             pgid = os.getpgid(pid)
-        except OSError:
-            # Process already gone.
-            return
+        except (ProcessLookupError, OSError):
+            # Process already gone — try cached PGID as fallback.
+            pgid = getattr(proc, "_shellwire_pgid", None)
+            if pgid is None:
+                return
 
         # SIGTERM the whole group.
         try:
             os.killpg(pgid, signal.SIGTERM)
             logger.debug("Sent SIGTERM to process group %d", pgid)
-        except OSError:
+        except (ProcessLookupError, OSError):
             return
 
         # Give it 3 seconds to exit gracefully.
         try:
             await asyncio.wait_for(proc.wait(), timeout=3.0)
-            return
+            # Process leader exited — check if entire group is dead.
+            if not self._is_group_alive(pgid):
+                return
         except asyncio.TimeoutError:
             pass
 
@@ -348,10 +471,29 @@ class CommandExecutor:
         try:
             os.killpg(pgid, signal.SIGKILL)
             logger.debug("Sent SIGKILL to process group %d", pgid)
-        except OSError:
+        except (ProcessLookupError, OSError):
             pass
 
         try:
             await asyncio.wait_for(proc.wait(), timeout=2.0)
         except asyncio.TimeoutError:
             logger.error("Process group %d did not die after SIGKILL", pgid)
+
+    @staticmethod
+    def _is_group_alive(pgid: int) -> bool:
+        """Probe whether any process in the group is still alive.
+
+        Uses signal 0 (no-op signal) via ``os.killpg`` — the kernel
+        checks permissions and existence without delivering a signal.
+
+        Checks if the process group is alive.
+        """
+        try:
+            os.killpg(pgid, 0)
+            return True
+        except ProcessLookupError:
+            return False
+        except PermissionError:
+            return True  # exists but we can't signal it
+        except OSError:
+            return False

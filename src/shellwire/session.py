@@ -1,8 +1,15 @@
+# This file contains modified third-party code licensed under the MIT License. See NOTICE for details.
 """Long-running interactive session manager.
 
 Sessions are persistent shell processes that survive beyond a single
 ``execute`` call.  They support stdin input, background output streaming,
 and clean process-group termination.
+
+Robustness features:
+- PTY mode via ptyprocess
+- Close-stdin / EOF support
+- Process group liveness probing via signal 0
+- PGID caching for kill fallback
 """
 
 from __future__ import annotations
@@ -30,7 +37,7 @@ class Session:
     """A running interactive session."""
 
     id: str
-    process: asyncio.subprocess.Process
+    process: Optional[asyncio.subprocess.Process]
     pgid: int
     started_at: float
     command: str
@@ -41,13 +48,17 @@ class Session:
     _on_output: Optional[SessionOutputCallback] = field(
         default=None, repr=False
     )
+    # PTY bridge instance (None for pipe-based sessions).
+    _pty_bridge: Any = field(default=None, repr=False)
+    _is_pty: bool = field(default=False, repr=False)
 
 
 class SessionManager:
     """Manage long-running interactive sessions.
 
     Each session is a subprocess in its own process group with streaming
-    stdout/stderr and stdin input support.
+    stdout/stderr and stdin input support.  Optionally spawned behind a
+    pseudo-terminal (PTY) for interactive programs.
     """
 
     def __init__(self, config: DaemonConfig) -> None:
@@ -70,6 +81,9 @@ class SessionManager:
         *,
         cwd: Optional[str] = None,
         on_output: Optional[SessionOutputCallback] = None,
+        use_pty: bool = False,
+        cols: int = 80,
+        rows: int = 24,
     ) -> Session:
         """Start a new interactive session.
 
@@ -78,6 +92,9 @@ class SessionManager:
             command: Shell command to run.
             cwd: Working directory (defaults to ``$HOME``).
             on_output: Async callback invoked for each chunk of output.
+            use_pty: If True, spawn behind a pseudo-terminal (requires ptyprocess).
+            cols: Initial terminal width (PTY mode only).
+            rows: Initial terminal height (PTY mode only).
 
         Returns:
             The :class:`Session` object.
@@ -94,6 +111,184 @@ class SessionManager:
                 f"Maximum sessions ({self._config.max_sessions}) reached"
             )
 
+        if use_pty and self._config.enable_pty:
+            return await self._start_pty_session(
+                session_id, command, cwd=cwd, on_output=on_output,
+                cols=cols, rows=rows,
+            )
+
+        return await self._start_pipe_session(
+            session_id, command, cwd=cwd, on_output=on_output,
+        )
+
+    async def send_input(
+        self, session_id: str, data: str, *, close_stdin: bool = False
+    ) -> None:
+        """Send data to the stdin of a running session.
+
+        Args:
+            session_id: Target session.
+            data: Text to write to stdin.
+            close_stdin: If True, close stdin after writing (send EOF).
+
+        Raises:
+            KeyError: If no session with *session_id* exists.
+            RuntimeError: If stdin is not available.
+        """
+        session = self._get_session(session_id)
+
+        if session._is_pty:
+            # PTY mode: write bytes to the PTY bridge.
+            if session._pty_bridge is None:
+                raise RuntimeError(f"Session '{session_id}' PTY bridge is closed")
+            if data:
+                session._pty_bridge.write(data.encode("utf-8"))
+            # PTY stdin cannot be "closed" — EOF is Ctrl+D (0x04).
+            if close_stdin:
+                session._pty_bridge.write(b"\x04")
+            logger.debug(
+                "Sent %d bytes to PTY session %s", len(data), session_id
+            )
+            return
+
+        # Pipe mode.
+        if session.process is None:
+            raise RuntimeError(f"Session '{session_id}' has no process")
+        stdin = session.process.stdin
+        if stdin is None:
+            raise RuntimeError(f"Session '{session_id}' has no stdin")
+
+        if data:
+            encoded = data.encode("utf-8")
+            stdin.write(encoded)
+            await stdin.drain()
+            logger.debug(
+                "Sent %d bytes to session %s stdin", len(encoded), session_id
+            )
+
+        if close_stdin:
+            stdin.close()
+            logger.debug("Closed stdin for session %s", session_id)
+
+    async def resize_session(
+        self, session_id: str, cols: int, rows: int
+    ) -> None:
+        """Resize the PTY terminal of a running session.
+
+        Args:
+            session_id: Target session.
+            cols: New terminal width.
+            rows: New terminal height.
+
+        Raises:
+            KeyError: If no session with *session_id* exists.
+            RuntimeError: If the session is not a PTY session.
+        """
+        session = self._get_session(session_id)
+        if not session._is_pty or session._pty_bridge is None:
+            raise RuntimeError(
+                f"Session '{session_id}' is not a PTY session"
+            )
+        session._pty_bridge.resize(cols, rows)
+        logger.debug(
+            "Resized PTY session %s to %dx%d", session_id, cols, rows
+        )
+
+    async def kill_session(self, session_id: str) -> Dict[str, Any]:
+        """Kill a session's process group and return a summary.
+
+        Args:
+            session_id: The session to terminate.
+
+        Returns:
+            A dict with ``exit_code`` and ``duration_ms``.
+
+        Raises:
+            KeyError: If no session with *session_id* exists.
+        """
+        session = self._get_session(session_id)
+
+        if session._is_pty:
+            await self._kill_pty_session(session)
+        else:
+            await self._kill_process_group(session)
+
+        # Wait for the stream task to finish.
+        if session._stream_task is not None and not session._stream_task.done():
+            session._stream_task.cancel()
+            try:
+                await session._stream_task
+            except (asyncio.CancelledError, Exception):
+                pass
+
+        exit_code: Optional[int] = -1
+        if session.process is not None:
+            exit_code = (
+                session.process.returncode
+                if session.process.returncode is not None
+                else -1
+            )
+        duration_ms = round((time.time() - session.started_at) * 1000, 2)
+
+        self._sessions.pop(session_id, None)
+        logger.info("Session killed: id=%s exit_code=%s", session_id, exit_code)
+
+        return {"exit_code": exit_code, "duration_ms": duration_ms}
+
+    def list_sessions(self) -> List[Dict[str, Any]]:
+        """Return metadata for all active sessions.
+
+        Returns:
+            A list of dicts describing each session.
+        """
+        result: List[Dict[str, Any]] = []
+        for sid, sess in self._sessions.items():
+            pid = -1
+            is_running = False
+            if sess._is_pty and sess._pty_bridge is not None:
+                pid = sess._pty_bridge.pid
+                is_running = sess._pty_bridge.is_alive()
+            elif sess.process is not None:
+                pid = sess.process.pid
+                is_running = sess.process.returncode is None
+
+            result.append(
+                {
+                    "id": sid,
+                    "pid": pid,
+                    "command": sess.command,
+                    "started_at": sess.started_at,
+                    "uptime_seconds": round(time.time() - sess.started_at, 1),
+                    "is_running": is_running,
+                    "is_pty": sess._is_pty,
+                    "recent_output": list(sess.output_buffer)[-10:],
+                }
+            )
+        return result
+
+    async def kill_all(self) -> None:
+        """Shutdown all sessions.  Called during daemon shutdown."""
+        session_ids = list(self._sessions.keys())
+        for sid in session_ids:
+            try:
+                await self.kill_session(sid)
+            except Exception:
+                logger.error("Error killing session %s", sid, exc_info=True)
+        logger.info("All sessions killed")
+
+    # ------------------------------------------------------------------
+    # Pipe-based session (original path)
+    # ------------------------------------------------------------------
+
+    async def _start_pipe_session(
+        self,
+        session_id: str,
+        command: str,
+        *,
+        cwd: Optional[str] = None,
+        on_output: Optional[SessionOutputCallback] = None,
+    ) -> Session:
+        """Start a pipe-based (non-PTY) session."""
         work_dir = cwd or os.environ.get("HOME", "/")
 
         proc = await asyncio.create_subprocess_shell(
@@ -117,111 +312,99 @@ class SessionManager:
             started_at=time.time(),
             command=command,
             _on_output=on_output,
+            _is_pty=False,
         )
         self._sessions[session_id] = session
 
         # Start background streaming task.
         session._stream_task = asyncio.ensure_future(
-            self._stream_output(session)
+            self._stream_pipe_output(session)
         )
 
         logger.info(
-            "Session started: id=%s pid=%d command='%s'",
+            "Session started (pipe): id=%s pid=%d command='%s'",
             session_id,
             proc.pid,
             command,
         )
         return session
 
-    async def send_input(self, session_id: str, data: str) -> None:
-        """Send data to the stdin of a running session.
+    # ------------------------------------------------------------------
+    # PTY-based session
+    # ------------------------------------------------------------------
 
-        Args:
-            session_id: Target session.
-            data: Text to write to stdin.
+    async def _start_pty_session(
+        self,
+        session_id: str,
+        command: str,
+        *,
+        cwd: Optional[str] = None,
+        on_output: Optional[SessionOutputCallback] = None,
+        cols: int = 80,
+        rows: int = 24,
+    ) -> Session:
+        """Start a PTY-based session using ptyprocess.
 
-        Raises:
-            KeyError: If no session with *session_id* exists.
-            RuntimeError: If stdin is not available.
+        Falls back to pipe-based session if PTY is unavailable.
         """
-        session = self._get_session(session_id)
-        stdin = session.process.stdin
-        if stdin is None:
-            raise RuntimeError(f"Session '{session_id}' has no stdin")
-
-        encoded = data.encode("utf-8")
-        stdin.write(encoded)
-        await stdin.drain()
-        logger.debug("Sent %d bytes to session %s stdin", len(encoded), session_id)
-
-    async def kill_session(self, session_id: str) -> Dict[str, Any]:
-        """Kill a session's process group and return a summary.
-
-        Args:
-            session_id: The session to terminate.
-
-        Returns:
-            A dict with ``exit_code`` and ``duration_ms``.
-
-        Raises:
-            KeyError: If no session with *session_id* exists.
-        """
-        session = self._get_session(session_id)
-        await self._kill_process_group(session)
-
-        # Wait for the stream task to finish.
-        if session._stream_task is not None and not session._stream_task.done():
-            session._stream_task.cancel()
-            try:
-                await session._stream_task
-            except (asyncio.CancelledError, Exception):
-                pass
-
-        exit_code = (
-            session.process.returncode
-            if session.process.returncode is not None
-            else -1
-        )
-        duration_ms = round((time.time() - session.started_at) * 1000, 2)
-
-        self._sessions.pop(session_id, None)
-        logger.info("Session killed: id=%s exit_code=%s", session_id, exit_code)
-
-        return {"exit_code": exit_code, "duration_ms": duration_ms}
-
-    def list_sessions(self) -> List[Dict[str, Any]]:
-        """Return metadata for all active sessions.
-
-        Returns:
-            A list of dicts describing each session.
-        """
-        result: List[Dict[str, Any]] = []
-        for sid, sess in self._sessions.items():
-            result.append(
-                {
-                    "id": sid,
-                    "pid": sess.process.pid,
-                    "command": sess.command,
-                    "started_at": sess.started_at,
-                    "uptime_seconds": round(time.time() - sess.started_at, 1),
-                    "is_running": sess.process.returncode is None,
-                    "recent_output": list(sess.output_buffer)[-10:],
-                }
+        try:
+            from shellwire.pty_bridge import PtyBridge, PtyUnavailableError
+        except ImportError:
+            logger.warning(
+                "pty_bridge not available, falling back to pipe session"
             )
-        return result
+            return await self._start_pipe_session(
+                session_id, command, cwd=cwd, on_output=on_output,
+            )
 
-    async def kill_all(self) -> None:
-        """Shutdown all sessions.  Called during daemon shutdown."""
-        session_ids = list(self._sessions.keys())
-        for sid in session_ids:
-            try:
-                await self.kill_session(sid)
-            except Exception:
-                logger.error("Error killing session %s", sid, exc_info=True)
-        logger.info("All sessions killed")
+        work_dir = cwd or os.environ.get("HOME", "/")
+        shell = self._config.shell_path or os.environ.get("SHELL", "/bin/sh")
+
+        try:
+            pty = PtyBridge.spawn(
+                [shell, "-c", command],
+                cwd=work_dir,
+                cols=cols,
+                rows=rows,
+            )
+        except PtyUnavailableError as exc:
+            logger.warning("PTY unavailable: %s — falling back to pipe", exc)
+            return await self._start_pipe_session(
+                session_id, command, cwd=cwd, on_output=on_output,
+            )
+        except (OSError, FileNotFoundError) as exc:
+            logger.error("Failed to spawn PTY session: %s", exc)
+            raise ValueError(f"Failed to start PTY session: {exc}") from exc
+
+        session = Session(
+            id=session_id,
+            process=None,  # No asyncio.subprocess.Process for PTY sessions
+            pgid=pty.pid,
+            started_at=time.time(),
+            command=command,
+            _on_output=on_output,
+            _pty_bridge=pty,
+            _is_pty=True,
+        )
+        self._sessions[session_id] = session
+
+        # Start background PTY reader in an executor thread.
+        session._stream_task = asyncio.ensure_future(
+            self._stream_pty_output(session)
+        )
+
+        logger.info(
+            "Session started (PTY): id=%s pid=%d command='%s' %dx%d",
+            session_id,
+            pty.pid,
+            command,
+            cols,
+            rows,
+        )
+        return session
 
     # ------------------------------------------------------------------
-    # Internal
+    # Internal helpers
     # ------------------------------------------------------------------
 
     def _get_session(self, session_id: str) -> Session:
@@ -231,7 +414,7 @@ class SessionManager:
         except KeyError:
             raise KeyError(f"No such session: '{session_id}'")
 
-    async def _stream_output(self, session: Session) -> None:
+    async def _stream_pipe_output(self, session: Session) -> None:
         """Background task that reads stdout/stderr and forwards output."""
 
         async def _read_pipe(
@@ -252,6 +435,7 @@ class SessionManager:
                         )
 
         try:
+            assert session.process is not None
             assert session.process.stdout is not None
             assert session.process.stderr is not None
             await asyncio.gather(
@@ -269,7 +453,11 @@ class SessionManager:
         finally:
             # Notify that session ended.
             if session._on_output is not None:
-                exit_code = session.process.returncode
+                exit_code = (
+                    session.process.returncode
+                    if session.process is not None
+                    else None
+                )
                 duration_ms = round(
                     (time.time() - session.started_at) * 1000, 2
                 )
@@ -286,33 +474,120 @@ class SessionManager:
             # Remove from active sessions if still present.
             self._sessions.pop(session.id, None)
 
-    async def _kill_process_group(self, session: Session) -> None:
-        """SIGTERM → wait 3s → SIGKILL the process group."""
-        proc = session.process
-        if proc.returncode is not None:
-            return
+    async def _stream_pty_output(self, session: Session) -> None:
+        """Background task that reads PTY output via an executor thread."""
+        loop = asyncio.get_event_loop()
+        pty = session._pty_bridge
 
         try:
-            os.killpg(session.pgid, signal.SIGTERM)
-            logger.debug("Sent SIGTERM to session pgid %d", session.pgid)
-        except OSError:
+            while pty is not None and pty.is_alive():
+                # Read in executor thread to avoid blocking the event loop.
+                data = await loop.run_in_executor(None, pty.read, 0.2)
+                if data is None:
+                    # EOF — child exited.
+                    break
+                if data == b"":
+                    # No data available within timeout — keep polling.
+                    continue
+
+                text = data.decode("utf-8", errors="replace")
+                session.output_buffer.append(f"[pty] {text}")
+                if session._on_output is not None:
+                    try:
+                        await session._on_output(session.id, text, "stdout")
+                    except Exception:
+                        logger.debug(
+                            "PTY session output callback error", exc_info=True
+                        )
+        except asyncio.CancelledError:
+            return
+        except Exception:
+            logger.error(
+                "Error streaming PTY session %s", session.id, exc_info=True
+            )
+        finally:
+            # Notify that session ended.
+            exit_code = None
+            if session._on_output is not None:
+                duration_ms = round(
+                    (time.time() - session.started_at) * 1000, 2
+                )
+                try:
+                    await session._on_output(
+                        session.id,
+                        "",
+                        f"__ended__:{exit_code}:{duration_ms}",
+                    )
+                except Exception:
+                    pass
+
+            # Remove from active sessions if still present.
+            self._sessions.pop(session.id, None)
+
+    async def _kill_process_group(self, session: Session) -> None:
+        """SIGTERM → wait 3s → SIGKILL the process group.
+
+        Enhanced with group liveness probing.
+        """
+        proc = session.process
+        if proc is None or proc.returncode is not None:
+            return
+
+        pgid = session.pgid
+
+        try:
+            os.killpg(pgid, signal.SIGTERM)
+            logger.debug("Sent SIGTERM to session pgid %d", pgid)
+        except (ProcessLookupError, OSError):
             return
 
         try:
             await asyncio.wait_for(proc.wait(), timeout=3.0)
-            return
+            # Leader exited — check if entire group is dead.
+            if not self._is_group_alive(pgid):
+                return
         except asyncio.TimeoutError:
             pass
 
         try:
-            os.killpg(session.pgid, signal.SIGKILL)
-            logger.debug("Sent SIGKILL to session pgid %d", session.pgid)
-        except OSError:
+            os.killpg(pgid, signal.SIGKILL)
+            logger.debug("Sent SIGKILL to session pgid %d", pgid)
+        except (ProcessLookupError, OSError):
             pass
 
         try:
             await asyncio.wait_for(proc.wait(), timeout=2.0)
         except asyncio.TimeoutError:
             logger.error(
-                "Session pgid %d did not die after SIGKILL", session.pgid
+                "Session pgid %d did not die after SIGKILL", pgid
             )
+
+    async def _kill_pty_session(self, session: Session) -> None:
+        """Close the PTY bridge (escalating signal chain)."""
+        pty = session._pty_bridge
+        if pty is None:
+            return
+
+        loop = asyncio.get_event_loop()
+        try:
+            await loop.run_in_executor(None, pty.close)
+        except Exception:
+            logger.debug("Error closing PTY bridge", exc_info=True)
+
+        session._pty_bridge = None
+
+    @staticmethod
+    def _is_group_alive(pgid: int) -> bool:
+        """Probe whether any process in the group is still alive (signal 0).
+
+        Checks if the process group is alive.
+        """
+        try:
+            os.killpg(pgid, 0)
+            return True
+        except ProcessLookupError:
+            return False
+        except PermissionError:
+            return True  # exists but we can't signal it
+        except OSError:
+            return False
