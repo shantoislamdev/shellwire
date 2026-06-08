@@ -21,6 +21,7 @@ class DaemonConfig:
     default_timeout: int = 120
     max_output_size: int = 512_000  # 512 KB
     max_sessions: int = 8
+    shutdown_grace_period: float = 5.0  # seconds to wait for commands before killing
     log_level: str = "INFO"
     log_file: str = "~/.shellwire/daemon.log"
 

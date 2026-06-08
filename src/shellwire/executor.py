@@ -83,6 +83,20 @@ class CommandExecutor:
         await self._kill_process_tree(proc)
         return True
 
+    async def wait_for_completion(self, timeout: float) -> int:
+        """Wait for active commands to finish, return count still running.
+
+        Args:
+            timeout: Maximum seconds to wait.
+
+        Returns:
+            Number of commands still running after timeout.
+        """
+        deadline = time.monotonic() + timeout
+        while self._active and time.monotonic() < deadline:
+            await asyncio.sleep(0.1)
+        return len(self._active)
+
     # ------------------------------------------------------------------
     # Internal
     # ------------------------------------------------------------------

@@ -13,6 +13,7 @@ import json
 import logging
 import os
 import platform
+import signal
 import sys
 import time
 from typing import Any, Dict, Optional
@@ -26,6 +27,7 @@ from shellwire.client_manager import ClientManager
 from shellwire.config import DaemonConfig
 from shellwire.executor import CommandExecutor
 from shellwire.protocol import (
+    DaemonStoppingMessage,
     ErrorMessage,
     OutputMessage,
     PongMessage,
@@ -59,6 +61,7 @@ class ShellwireServer:
         self._client_manager = ClientManager()
         self._start_time = time.time()
         self._shell = os.environ.get("SHELL", "/bin/sh")
+        self._shutting_down: bool = False
 
     # ------------------------------------------------------------------
     # Health check (HTTP on same port)
@@ -234,6 +237,16 @@ class ShellwireServer:
                 data.get("id"),
                 "Invalid message format",
                 "INVALID_MESSAGE",
+            )
+            return
+
+        # Reject all commands during shutdown.
+        if self._shutting_down:
+            await self._send_error(
+                websocket,
+                data.get("id"),
+                "Daemon is shutting down",
+                "DAEMON_STOPPING",
             )
             return
 
@@ -448,6 +461,57 @@ class ShellwireServer:
         )
 
     # ------------------------------------------------------------------
+    # Graceful shutdown
+    # ------------------------------------------------------------------
+
+    async def _graceful_shutdown(self) -> None:
+        """Execute the multi-stage graceful shutdown sequence.
+
+        1. Stop accepting new commands
+        2. Notify client: daemon_stopping
+        3. Wait for short commands to finish (grace period)
+        4. Kill long sessions/process groups
+        5. Close WebSocket connection
+
+        Idempotent: second call is a no-op.
+        """
+        if self._shutting_down:
+            return
+        self._shutting_down = True
+
+        logger.info("Shutdown: stopping acceptance of new commands")
+
+        # Notify connected client.
+        ws = self._client_manager.active_websocket
+        if ws is not None:
+            logger.info("Shutdown: notifying client")
+            await self._send(ws, DaemonStoppingMessage())
+
+        # Wait for active commands to finish.
+        grace = self._config.shutdown_grace_period
+        logger.info("Shutdown: waiting %.1fs for commands to finish", grace)
+        still_running = await self._executor.wait_for_completion(grace)
+        if still_running > 0:
+            logger.warning(
+                "Shutdown: %d command(s) still running after grace period",
+                still_running,
+            )
+
+        # Kill all sessions.
+        logger.info("Shutdown: killing sessions")
+        await self._session_manager.kill_all()
+
+        # Close the WebSocket connection.
+        if ws is not None:
+            logger.info("Shutdown: closing client connection")
+            try:
+                await ws.close(1001, "Server shutting down")
+            except Exception:
+                logger.debug("Shutdown: connection already closed")
+
+        logger.info("Shutdown: complete")
+
+    # ------------------------------------------------------------------
     # Server lifecycle
     # ------------------------------------------------------------------
 
@@ -495,7 +559,7 @@ class ShellwireServer:
             except asyncio.CancelledError:
                 pass
 
-        # Graceful shutdown.
-        logger.info("Shutting down...")
-        await self._session_manager.kill_all()
+            # Graceful shutdown while connections are still open.
+            await self._graceful_shutdown()
+
         logger.info("Server stopped")

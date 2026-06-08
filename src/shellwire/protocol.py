@@ -161,6 +161,13 @@ class PongMessage:
     type: str = "pong"
 
 
+@dataclass
+class DaemonStoppingMessage:
+    """Notification that the daemon is shutting down."""
+
+    type: str = "daemon_stopping"
+
+
 # ---------------------------------------------------------------------------
 # Required fields per message type
 # ---------------------------------------------------------------------------
@@ -173,6 +180,7 @@ _REQUIRED_FIELDS: Dict[str, List[str]] = {
     "kill_session": ["id"],
     "list_sessions": [],
     "ping": [],
+    "daemon_stopping": [],
 }
 
 # ---------------------------------------------------------------------------
