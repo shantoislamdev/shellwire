@@ -106,6 +106,25 @@ class ShellwireServer:
                 body=body,
             )
 
+        # Check if this is a WebSocket upgrade request.
+        # If it's a regular HTTP request, return an HTTP response to avoid noisy
+        # InvalidUpgrade tracebacks from the websockets library.
+        upgrade = request.headers.get("Upgrade", "")
+        if upgrade.lower() != "websocket":
+            body = b"shellwire: WebSocket upgrade required\n"
+            return Response(
+                status_code=426,
+                reason_phrase="Upgrade Required",
+                headers=websockets.Headers(
+                    [
+                        ("Content-Type", "text/plain"),
+                        ("Content-Length", str(len(body))),
+                        ("Connection", "close"),
+                    ]
+                ),
+                body=body,
+            )
+
         # Return None to let the WebSocket handshake proceed.
         return None
 
