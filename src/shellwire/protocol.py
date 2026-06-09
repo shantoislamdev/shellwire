@@ -42,6 +42,14 @@ class ExecuteMessage:
 
 
 @dataclass
+class CancelCommandMessage:
+    """Cancel a pending or running one-shot command."""
+
+    id: str
+    type: str = "cancel_command"
+
+
+@dataclass
 class StartSessionMessage:
     """Start a long-running interactive session."""
 
@@ -201,6 +209,7 @@ class CommandQueuedMessage:
 _REQUIRED_FIELDS: Dict[str, List[str]] = {
     "auth": ["token", "client_id"],
     "execute": ["id", "command"],
+    "cancel_command": ["id"],
     "start_session": ["id", "command"],
     "send_input": ["id", "data"],
     "kill_session": ["id"],

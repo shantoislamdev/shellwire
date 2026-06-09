@@ -274,6 +274,7 @@ class ShellwireServer:
 
         handlers = {
             "execute": self._handle_execute,
+            "cancel_command": self._handle_cancel_command,
             "start_session": self._handle_start_session,
             "send_input": self._handle_send_input,
             "kill_session": self._handle_kill_session,
@@ -384,6 +385,15 @@ class ShellwireServer:
             await self._send_error(
                 websocket, command_id, str(exc), "EXECUTION_ERROR"
             )
+
+    async def _handle_cancel_command(
+        self, data: Dict[str, Any], websocket: Any
+    ) -> None:
+        """Handle a ``cancel_command`` message."""
+        command_id = data["id"]
+        success = await self._executor.cancel(command_id)
+        if not success:
+            logger.debug("Failed to cancel command %s (not found or already done)", command_id)
 
     async def _handle_start_session(
         self, data: Dict[str, Any], websocket: Any

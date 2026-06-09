@@ -369,10 +369,13 @@ def _run_foreground(
     _print_banner(config.host, config.port, token, first_start)
 
     write_pid(os.getpid())
-    server = ShellwireServer(config)
+
+    async def _start_server() -> None:
+        server = ShellwireServer(config)
+        await server.serve()
 
     try:
-        asyncio.run(server.serve())
+        asyncio.run(_start_server())
     except KeyboardInterrupt:
         click.echo("\nShutting down...")
     finally:
@@ -423,9 +426,12 @@ def _daemonize(
     _setup_logging(config.log_level, config.log_file)
     write_pid(os.getpid())
 
-    server = ShellwireServer(config)
+    async def _start_server() -> None:
+        server = ShellwireServer(config)
+        await server.serve()
+
     try:
-        asyncio.run(server.serve())
+        asyncio.run(_start_server())
     finally:
         remove_pid()
 
