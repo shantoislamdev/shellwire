@@ -1,3 +1,4 @@
+# This file contains modified third-party code licensed under the MIT License. See NOTICE for details.
 """Click CLI for shellwire.
 
 Provides the ``shellwire`` command with subcommands for starting, stopping,
@@ -17,7 +18,7 @@ from typing import Optional
 # Differentiated exit codes for restart logic.  termux-services, wrapper
 # scripts, or systemd units can interpret this to auto-restart the daemon
 # on planned restarts (e.g. config reload) but NOT on crashes.
-# Adapted from Hermes gateway/restart.py (EX_TEMPFAIL = 75).
+# Adapted from third-party code (EX_TEMPFAIL = 75).
 EXIT_RESTART = 75
 
 import click
@@ -95,7 +96,7 @@ def _print_banner(host: str, port: int, token: str, first_start: bool) -> None:
 
 
 # ======================================================================
-# Crash-resistant stdio (adapted from Hermes tui_gateway/transport.py)
+# Crash-resistant stdio
 # ======================================================================
 
 # Errno values that mean "the peer is gone" rather than a real I/O bug.
@@ -112,7 +113,7 @@ _PEER_GONE_ERRNOS = frozenset({
 class _SafeWriter:
     """Wrapper around a stream that catches broken-pipe errors on write.
 
-    Adapted from Hermes ``tui_gateway/transport.py`` ``_SafeWriter``.
+    Adapted from third-party code.
     On Termux/Android, the terminal emulator can be killed at any time
     by the OS (Doze mode, phantom process killer, user swipe-away),
     leaving stdout/stderr as broken pipes.  Without this wrapper, every

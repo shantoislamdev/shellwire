@@ -285,7 +285,7 @@ class SessionManager:
         logger.info("All sessions killed")
 
     # ------------------------------------------------------------------
-    # Idle timeout watcher (adapted from Hermes gateway/run.py)
+    # Idle timeout watcher
     # ------------------------------------------------------------------
 
     def start_idle_watcher(self) -> None:

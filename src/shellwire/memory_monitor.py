@@ -1,15 +1,14 @@
+# This file contains modified third-party code licensed under the MIT License. See NOTICE for details.
 """Periodic process memory usage logging for Shellwire on Termux/Android.
 
-Adapted from the Hermes gateway memory monitor
-(hermes-agent/gateway/memory_monitor.py), itself ported from
-cline/cline#10343 (src/standalone/memory-monitor.ts).
+Adapted from third-party code.
 
 Shellwire is a lightweight Termux utility, so this module avoids the
 ``psutil`` dependency entirely.  Instead it reads RSS directly from
 ``/proc/self/status`` (always available on Linux/Android), with a
 stdlib ``resource.getrusage`` fallback.
 
-Key differences from the Hermes version:
+Key differences from the original version:
   * PRIMARY RSS source: ``/proc/self/status`` → ``VmRSS:`` (kB → MB).
   * FALLBACK: ``resource.getrusage(RUSAGE_SELF).ru_maxrss`` (checked >0
     because some Android kernels report 0).
@@ -20,9 +19,9 @@ Key differences from the Hermes version:
   * Thread name: ``shellwire-memory-monitor``.
 
 The ``[MEMORY]`` prefix format is preserved for grep-ability across
-both Hermes and Shellwire logs.
+both the original and Shellwire logs.
 
-Public API (same as Hermes):
+Public API (same as original):
   * ``start_memory_monitoring(interval_seconds=600.0) -> bool``
   * ``stop_memory_monitoring(timeout=2.0) -> None``
   * ``log_memory_usage(prefix="") -> None``
@@ -190,7 +189,7 @@ def start_memory_monitoring(interval_seconds: float = 600.0) -> bool:
     ----------
     interval_seconds
         How often to log.  Default 600s (10 minutes), reduced from
-        Hermes's 300s to be gentler on Android battery / wake-ups.
+        the original 300s to be gentler on Android battery / wake-ups.
 
     Returns
     -------

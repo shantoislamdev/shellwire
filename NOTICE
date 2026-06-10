@@ -1,16 +1,5 @@
 Shellwire includes code ported and heavily modified from the hermes-agent project.
-The following modules contain abstractions and logic derived from hermes-agent:
-- src/shellwire/auth.py (modified)
-- src/shellwire/cli.py (modified)
-- src/shellwire/env_tracking.py (modified)
-- src/shellwire/executor.py (modified)
-- src/shellwire/memory_monitor.py (modified)
-- src/shellwire/output.py (modified)
-- src/shellwire/pty_bridge.py (modified)
-- src/shellwire/server.py (modified)
-- src/shellwire/session.py (modified)
-- src/shellwire/shell_rewrite.py (modified)
-- src/shellwire/shutdown_forensics.py (modified)
+Portions of the codebase contain abstractions and logic derived from hermes-agent.
 
 The original hermes-agent code is licensed under the MIT License:
 
