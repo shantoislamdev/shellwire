@@ -12,6 +12,7 @@
 - **Interactive PTY sessions (POSIX)** — full pseudo-terminal support with dynamic resizing
 - **Environment Tracking** — persistent working directory (CWD) and exported environment variables across commands
 - **Compound Command Rewriting** — automatically rewrites bash chains (e.g. `A && B &` -> `A && { B & }`) for standard backgrounding
+- **Termux / Android Optimized** — Built-in resilience against mobile network handoffs, terminal DOZE states, and phantom process killers, ensuring extreme stability for long-running mobile environments.
 - **Robust Process Isolation** — prevents zombie processes via process-group escalation kills (SIGTERM → SIGKILL) and protects against runaway output
 - **Health endpoint** — HTTP GET `/health` on the same port
 

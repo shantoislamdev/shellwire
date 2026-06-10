@@ -1,4 +1,3 @@
-# This file contains modified third-party code licensed under the MIT License. See NOTICE for details.
 """WebSocket server – the heart of shellwire.
 
 Ties together authentication, command execution, session management,
@@ -653,7 +652,7 @@ class ShellwireServer:
         logger.info("Shutdown: complete")
 
     # ------------------------------------------------------------------
-    # Asyncio loop exception handler
+    # Asyncio loop exception handler (adapted from Hermes gateway/run.py)
     # ------------------------------------------------------------------
 
     @staticmethod
@@ -712,7 +711,7 @@ class ShellwireServer:
     ) -> None:
         """Asyncio loop-level safety net for transient network errors.
 
-        Adapted from third-party code.  Catches transient
+        Adapted from Hermes ``gateway/run.py``.  Catches transient
         network errors before they can kill the daemon process.  Logs
         at WARNING with full traceback for diagnostics; non-transient
         errors are forwarded to the default handler.
@@ -743,7 +742,7 @@ class ShellwireServer:
 
         # Install custom exception handler to prevent transient network
         # errors (DNS failures, socket resets — common on mobile networks)
-        # from killing the daemon.  Adapted from third-party code.
+        # from killing the daemon.  Adapted from Hermes gateway/run.py.
         loop.set_exception_handler(self._loop_exception_handler)
 
         stop = asyncio.Future()  # type: asyncio.Future[None]

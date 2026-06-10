@@ -1,7 +1,6 @@
-# This file contains modified third-party code licensed under the MIT License. See NOTICE for details.
 """Shutdown forensics — capture context when the daemon receives SIGTERM/SIGINT.
 
-Termux/Android-adapted version of third-party shutdown forensics.
+Termux/Android-adapted version of the Hermes gateway shutdown forensics.
 
 The daemon's ``shutdown_signal_handler`` runs synchronously inside the
 asyncio event loop.  We can't safely block it for long, but we DO want a
@@ -12,7 +11,7 @@ This module exposes :func:`snapshot_shutdown_context`, a fast (<10ms),
 non-blocking probe that returns a structured dict the signal handler can
 log immediately.
 
-Stripped vs. upstream
+Stripped vs. Hermes upstream
 ----------------------------
 - **Removed** ``spawn_async_diagnostic()`` — ``dmesg``, ``pstree``, and
   ``ps auxf`` require root on Android, and forking a child wastes one of
