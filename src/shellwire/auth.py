@@ -10,10 +10,12 @@ All files are stored under ``~/.shellwire/``.
 from __future__ import annotations
 
 import hmac
+import json
 import logging
 import os
 import secrets
 import signal
+import time
 import stat
 from pathlib import Path
 from typing import Optional
@@ -126,25 +128,38 @@ def validate_token(provided: str) -> bool:
 
 
 def write_pid(pid: int) -> None:
-    """Write the daemon PID to the PID file.
+    """Write the daemon PID to the PID file as a JSON record.
 
-    Args:
-        pid: The process ID to record.
+    The record includes the process start time from /proc/self/stat
+    (field 22, 0-indexed as 21) for PID-reuse detection. On Termux/Android,
+    /proc/self/stat is always readable even with hidepid=2.
     """
     TOKEN_DIR.mkdir(parents=True, exist_ok=True)
-    PID_FILE.write_text(str(pid), encoding="utf-8")
-    logger.debug("Wrote PID %d to %s", pid, PID_FILE)
+    start_time = None
+    try:
+        with open("/proc/self/stat", encoding="utf-8") as f:
+            fields = f.read().split()
+            start_time = int(fields[21])  # field 22 (0-indexed)
+    except (OSError, IndexError, ValueError):
+        start_time = int(time.time())  # fallback: wall clock
+    record = json.dumps({"pid": pid, "start_time": start_time})
+    tmp_path = PID_FILE.with_suffix(".tmp")
+    tmp_path.write_text(record, encoding="utf-8")
+    tmp_path.replace(PID_FILE)
+    logger.debug("Wrote PID %d (start_time=%s) to %s", pid, start_time, PID_FILE)
 
 
 def read_pid() -> Optional[int]:
-    """Read the stored daemon PID.
-
-    Returns:
-        The PID as an integer, or ``None`` if the file doesn't exist or
-        contains invalid data.
-    """
+    """Read the stored daemon PID."""
     try:
         text = PID_FILE.read_text(encoding="utf-8").strip()
+        # Try JSON format first (new)
+        try:
+            record = json.loads(text)
+            return int(record["pid"])
+        except (json.JSONDecodeError, KeyError, TypeError):
+            pass
+        # Fallback: legacy plain integer
         return int(text)
     except (FileNotFoundError, ValueError):
         return None
@@ -153,29 +168,60 @@ def read_pid() -> Optional[int]:
         return None
 
 
+def _read_pid_record() -> Optional[dict]:
+    """Read the full PID record (pid + start_time), or None."""
+    try:
+        text = PID_FILE.read_text(encoding="utf-8").strip()
+        try:
+            record = json.loads(text)
+            if "pid" in record:
+                return record
+        except (json.JSONDecodeError, TypeError):
+            pass
+        # Legacy plain PID — no start_time available
+        pid = int(text)
+        return {"pid": pid, "start_time": None}
+    except (FileNotFoundError, ValueError):
+        return None
+    except OSError as exc:
+        logger.error("Failed to read PID record: %s", exc)
+        return None
+
+
 def is_running() -> bool:
     """Check whether the daemon is currently running.
 
-    Sends signal 0 to the stored PID to test liveness.
-
-    Returns:
-        ``True`` if a process with the stored PID exists.
+    Uses signal 0 for liveness, plus a start-time comparison from
+    /proc/<pid>/stat to detect PID reuse after crashes. On Termux,
+    /proc/<pid>/stat is readable for same-UID processes even with hidepid=2.
     """
-    pid = read_pid()
-    if pid is None:
+    record = _read_pid_record()
+    if record is None:
         return False
+    pid = record["pid"]
+    saved_start_time = record.get("start_time")
     try:
         os.kill(pid, 0)
-        return True
     except ProcessLookupError:
-        # Stale PID file – clean it up.
         remove_pid()
         return False
     except PermissionError:
-        # Process exists but we can't signal it (shouldn't happen in user-space).
         return True
     except OSError:
         return False
+    # PID-reuse guard: compare start times
+    if saved_start_time is not None:
+        try:
+            with open(f"/proc/{pid}/stat", encoding="utf-8") as f:
+                fields = f.read().split()
+                current_start_time = int(fields[21])
+                if current_start_time != saved_start_time:
+                    logger.info("PID %d was reused (start_time mismatch), cleaning up", pid)
+                    remove_pid()
+                    return False
+        except (OSError, IndexError, ValueError):
+            pass  # Can't verify — trust signal-0 result
+    return True
 
 
 def remove_pid() -> None:

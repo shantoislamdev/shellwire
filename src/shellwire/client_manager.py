@@ -207,9 +207,13 @@ class ClientManager:
 
         try:
             _CLIENTS_FILE.parent.mkdir(parents=True, exist_ok=True)
-            _CLIENTS_FILE.write_text(
+            # Atomic write: temp file + rename to prevent corruption
+            # on crash.  Matches the pattern from auth.py token persistence.
+            tmp_path = _CLIENTS_FILE.with_suffix(".tmp")
+            tmp_path.write_text(
                 json.dumps(data, indent=2), encoding="utf-8"
             )
+            tmp_path.replace(_CLIENTS_FILE)
         except OSError as exc:
             logger.error("Failed to persist client data: %s", exc)
 

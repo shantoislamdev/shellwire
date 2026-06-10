@@ -42,6 +42,8 @@ from shellwire.protocol import (
     validate_message,
 )
 from shellwire.session import SessionManager
+from shellwire import memory_monitor
+from shellwire import shutdown_forensics
 
 logger = logging.getLogger(__name__)
 
@@ -61,8 +63,33 @@ class ShellwireServer:
         self._session_manager = SessionManager(config)
         self._client_manager = ClientManager()
         self._start_time = time.time()
-        self._shell = config.shell_path or os.environ.get("SHELL", "/bin/sh")
+        self._shell = self._detect_shell(config.shell_path)
         self._shutting_down: bool = False
+
+    @staticmethod
+    def _detect_shell(config_shell: str) -> str:
+        """Resolve the shell binary, with Termux-safe fallbacks.
+
+        On Termux/Android, ``/bin/sh`` does not exist — the shell is at
+        ``$PREFIX/bin/sh`` (typically
+        ``/data/data/com.termux/files/usr/bin/sh``).  This method tries
+        ``$SHELL`` first, then platform-appropriate fallbacks.
+        """
+        if config_shell:
+            return config_shell
+        env_shell = os.environ.get("SHELL")
+        if env_shell:
+            return env_shell
+        # Fallback chain: Termux-aware
+        for candidate in (
+            "/bin/sh",
+            "/data/data/com.termux/files/usr/bin/sh",
+            "/data/data/com.termux/files/usr/bin/bash",
+            "/system/bin/sh",
+        ):
+            if os.path.isfile(candidate):
+                return candidate
+        return "/bin/sh"  # last resort
 
     # ------------------------------------------------------------------
     # Health check (HTTP on same port)
@@ -573,7 +600,23 @@ class ShellwireServer:
             return
         self._shutting_down = True
 
-        logger.info("Shutdown: stopping acceptance of new commands")
+        # --- Shutdown forensics snapshot ---
+        try:
+            ctx = shutdown_forensics.snapshot_shutdown_context()
+            logger.info(
+                "[SHUTDOWN] %s",
+                shutdown_forensics.format_context_for_log(ctx),
+            )
+        except Exception:
+            pass
+
+        # --- Stop memory monitor ---
+        try:
+            memory_monitor.stop_memory_monitoring()
+        except Exception:
+            pass
+
+        logger.info("Shutdown: starting graceful shutdown")
 
         # Notify connected client.
         ws = self._client_manager.active_websocket
@@ -609,6 +652,84 @@ class ShellwireServer:
         logger.info("Shutdown: complete")
 
     # ------------------------------------------------------------------
+    # Asyncio loop exception handler (adapted from Hermes gateway/run.py)
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _is_transient_network_error(exc: BaseException) -> bool:
+        """Return True for transient network errors safe to log and swallow.
+
+        Walks the exception cause chain (up to 12 deep) checking for
+        common network error class names.  On mobile networks (Termux),
+        DNS failures and socket resets during WiFi→mobile handoffs are
+        frequent and must not crash the daemon.
+        """
+        seen: set = set()
+        cur = exc
+        depth = 0
+        transient_names = {
+            "TimedOut",
+            "NetworkError",
+            "ReadError",
+            "WriteError",
+            "ConnectError",
+            "ConnectTimeout",
+            "ReadTimeout",
+            "WriteTimeout",
+            "PoolTimeout",
+            "RemoteProtocolError",
+            "ServerDisconnectedError",
+            "ClientConnectorError",
+            "ClientOSError",
+            "ConnectionResetError",
+            "BrokenPipeError",
+        }
+        while cur is not None and depth < 12:
+            ident = id(cur)
+            if ident in seen:
+                break
+            seen.add(ident)
+            depth += 1
+            if type(cur).__name__ in transient_names:
+                return True
+            # Also check OSError with transient errno values
+            if isinstance(cur, OSError) and cur.errno in (
+                110,  # ETIMEDOUT
+                111,  # ECONNREFUSED
+                104,  # ECONNRESET
+            ):
+                return True
+            cur = getattr(cur, "__cause__", None) or getattr(
+                cur, "__context__", None
+            )
+        return False
+
+    def _loop_exception_handler(
+        self,
+        loop: asyncio.AbstractEventLoop,
+        context: dict,
+    ) -> None:
+        """Asyncio loop-level safety net for transient network errors.
+
+        Adapted from Hermes ``gateway/run.py``.  Catches transient
+        network errors before they can kill the daemon process.  Logs
+        at WARNING with full traceback for diagnostics; non-transient
+        errors are forwarded to the default handler.
+        """
+        exc = context.get("exception")
+        if exc is not None and self._is_transient_network_error(exc):
+            message = context.get("message") or "transient network error"
+            logger.warning(
+                "Swallowed transient network error: %s: %s (%s)",
+                type(exc).__name__,
+                exc,
+                message,
+            )
+            return
+        # Fall back to the default handler for anything unrecognised.
+        loop.default_exception_handler(context)
+
+    # ------------------------------------------------------------------
     # Server lifecycle
     # ------------------------------------------------------------------
 
@@ -618,6 +739,11 @@ class ShellwireServer:
         Installs signal handlers for SIGTERM/SIGINT for graceful shutdown.
         """
         loop = asyncio.get_event_loop()
+
+        # Install custom exception handler to prevent transient network
+        # errors (DNS failures, socket resets — common on mobile networks)
+        # from killing the daemon.  Adapted from Hermes gateway/run.py.
+        loop.set_exception_handler(self._loop_exception_handler)
 
         stop = asyncio.Future()  # type: asyncio.Future[None]
 
@@ -635,6 +761,12 @@ class ShellwireServer:
             self._config.host,
             self._config.port,
         )
+
+        # Start memory monitoring (Termux-optimized, 10min interval)
+        memory_monitor.start_memory_monitoring(interval_seconds=600.0)
+
+        # Start idle session timeout watcher
+        self._session_manager.start_idle_watcher()
 
         async with websockets.serve(
             self.handler,

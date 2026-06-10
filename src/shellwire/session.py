@@ -51,6 +51,9 @@ class Session:
     # PTY bridge instance (None for pipe-based sessions).
     _pty_bridge: Any = field(default=None, repr=False)
     _is_pty: bool = field(default=False, repr=False)
+    # Last time this session had user interaction (send_input / start).
+    # Used by the idle timeout watcher to reap abandoned sessions.
+    last_activity: float = field(default_factory=time.time)
 
 
 class SessionManager:
@@ -64,6 +67,7 @@ class SessionManager:
     def __init__(self, config: DaemonConfig) -> None:
         self._config = config
         self._sessions: Dict[str, Session] = {}
+        self._idle_timeout_task: Optional[asyncio.Task] = None
 
     @property
     def active_count(self) -> int:
@@ -149,6 +153,7 @@ class SessionManager:
             logger.debug(
                 "Sent %d bytes to PTY session %s", len(data), session_id
             )
+            session.last_activity = time.time()
             return
 
         # Pipe mode.
@@ -169,6 +174,8 @@ class SessionManager:
         if close_stdin:
             stdin.close()
             logger.debug("Closed stdin for session %s", session_id)
+
+        session.last_activity = time.time()
 
     async def resize_session(
         self, session_id: str, cols: int, rows: int
@@ -268,6 +275,7 @@ class SessionManager:
 
     async def kill_all(self) -> None:
         """Shutdown all sessions.  Called during daemon shutdown."""
+        self.stop_idle_watcher()
         session_ids = list(self._sessions.keys())
         for sid in session_ids:
             try:
@@ -275,6 +283,108 @@ class SessionManager:
             except Exception:
                 logger.error("Error killing session %s", sid, exc_info=True)
         logger.info("All sessions killed")
+
+    # ------------------------------------------------------------------
+    # Idle timeout watcher (adapted from Hermes gateway/run.py)
+    # ------------------------------------------------------------------
+
+    def start_idle_watcher(self) -> None:
+        """Start the idle session timeout watcher task.
+
+        On Termux/Android, idle sessions holding open process groups
+        waste precious phantom-process-killer budget.  This watcher
+        periodically scans for sessions that have had no user
+        interaction for longer than ``session_idle_timeout`` and kills
+        them.
+
+        Safe to call multiple times; subsequent calls are no-ops.
+        """
+        if self._idle_timeout_task is not None:
+            return
+        timeout = self._config.session_idle_timeout
+        if timeout <= 0:
+            logger.info("Session idle timeout disabled (value=%s)", timeout)
+            return
+        self._idle_timeout_task = asyncio.ensure_future(
+            self._idle_watcher_loop(timeout)
+        )
+        logger.info(
+            "Session idle timeout watcher started (timeout=%ds)", timeout
+        )
+
+    def stop_idle_watcher(self) -> None:
+        """Stop the idle session timeout watcher."""
+        if self._idle_timeout_task is not None:
+            self._idle_timeout_task.cancel()
+            self._idle_timeout_task = None
+
+    async def _idle_watcher_loop(self, timeout: float) -> None:
+        """Background coroutine that reaps idle sessions.
+
+        Scans every 60 seconds.  A session is considered idle when
+        ``time.time() - session.last_activity > timeout``.
+        """
+        _SCAN_INTERVAL = 60  # seconds
+        _MAX_WARNINGS = 3  # warn before killing
+        warned: Dict[str, int] = {}  # session_id → warning count
+
+        try:
+            while True:
+                await asyncio.sleep(_SCAN_INTERVAL)
+                now = time.time()
+                to_kill: List[str] = []
+
+                for sid, session in list(self._sessions.items()):
+                    idle_secs = now - session.last_activity
+                    if idle_secs <= timeout:
+                        warned.pop(sid, None)
+                        continue
+
+                    count = warned.get(sid, 0) + 1
+                    warned[sid] = count
+
+                    if count <= _MAX_WARNINGS:
+                        logger.warning(
+                            "Session %s idle for %ds (timeout=%ds, "
+                            "warning %d/%d)",
+                            sid,
+                            int(idle_secs),
+                            int(timeout),
+                            count,
+                            _MAX_WARNINGS,
+                        )
+                    else:
+                        logger.warning(
+                            "Session %s idle for %ds — killing "
+                            "(exceeded %d warnings)",
+                            sid,
+                            int(idle_secs),
+                            _MAX_WARNINGS,
+                        )
+                        to_kill.append(sid)
+
+                for sid in to_kill:
+                    try:
+                        await self.kill_session(sid)
+                        warned.pop(sid, None)
+                        logger.info(
+                            "Idle session %s killed by timeout watcher", sid
+                        )
+                    except Exception:
+                        logger.error(
+                            "Failed to kill idle session %s",
+                            sid,
+                            exc_info=True,
+                        )
+
+                # Clean up warnings for sessions that no longer exist.
+                warned = {
+                    sid: c
+                    for sid, c in warned.items()
+                    if sid in self._sessions
+                }
+        except asyncio.CancelledError:
+            pass
 
     # ------------------------------------------------------------------
     # Pipe-based session (original path)

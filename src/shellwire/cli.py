@@ -7,11 +7,18 @@ and managing the daemon, tokens, and clients.
 from __future__ import annotations
 
 import asyncio
+import errno
 import logging
 import os
 import signal
 import sys
 from typing import Optional
+
+# Differentiated exit codes for restart logic.  termux-services, wrapper
+# scripts, or systemd units can interpret this to auto-restart the daemon
+# on planned restarts (e.g. config reload) but NOT on crashes.
+# Adapted from Hermes gateway/restart.py (EX_TEMPFAIL = 75).
+EXIT_RESTART = 75
 
 import click
 
@@ -85,6 +92,80 @@ def _print_banner(host: str, port: int, token: str, first_start: bool) -> None:
     click.echo()
     click.echo("  Press Ctrl+C to stop.")
     click.echo()
+
+
+# ======================================================================
+# Crash-resistant stdio (adapted from Hermes tui_gateway/transport.py)
+# ======================================================================
+
+# Errno values that mean "the peer is gone" rather than a real I/O bug.
+# On Termux/Android, the terminal app can be killed at any time by the
+# OS, leaving stdout/stderr as broken pipes.
+_PEER_GONE_ERRNOS = frozenset({
+    errno.EPIPE,
+    errno.ECONNRESET,
+    errno.EBADF,
+    getattr(errno, "ESHUTDOWN", -1),
+} - {-1})
+
+
+class _SafeWriter:
+    """Wrapper around a stream that catches broken-pipe errors on write.
+
+    Adapted from Hermes ``tui_gateway/transport.py`` ``_SafeWriter``.
+    On Termux/Android, the terminal emulator can be killed at any time
+    by the OS (Doze mode, phantom process killer, user swipe-away),
+    leaving stdout/stderr as broken pipes.  Without this wrapper, every
+    ``logger.info(...)`` after that point raises ``BrokenPipeError`` and
+    produces a noisy traceback to a pipe that nobody is reading.
+
+    This wrapper silently swallows peer-gone errors and returns the
+    number of characters the caller *tried* to write, so logging and
+    print calls continue without exception.
+    """
+
+    __slots__ = ("_stream",)
+
+    def __init__(self, stream) -> None:
+        self._stream = stream
+
+    def write(self, data: str) -> int:
+        try:
+            return self._stream.write(data)
+        except BrokenPipeError:
+            return len(data)
+        except OSError as exc:
+            if exc.errno in _PEER_GONE_ERRNOS:
+                return len(data)
+            raise
+        except ValueError:
+            # "I/O operation on closed file"
+            return len(data)
+
+    def flush(self) -> None:
+        try:
+            self._stream.flush()
+        except (BrokenPipeError, ValueError):
+            pass
+        except OSError as exc:
+            if exc.errno not in _PEER_GONE_ERRNOS:
+                raise
+
+    def __getattr__(self, name):
+        return getattr(self._stream, name)
+
+
+def _install_safe_writers() -> None:
+    """Replace sys.stdout/stderr with crash-resistant wrappers.
+
+    Safe to call multiple times; subsequent calls are no-ops if the
+    streams are already wrapped.
+    """
+    if not isinstance(sys.stdout, _SafeWriter) and sys.stdout is not None:
+        sys.stdout = _SafeWriter(sys.stdout)  # type: ignore[assignment]
+    if not isinstance(sys.stderr, _SafeWriter) and sys.stderr is not None:
+        sys.stderr = _SafeWriter(sys.stderr)  # type: ignore[assignment]
+
 
 
 # ======================================================================
@@ -366,6 +447,7 @@ def _run_foreground(
 ) -> None:
     """Run the server in the foreground."""
     _setup_logging(config.log_level, config.log_file)
+    _install_safe_writers()
     _print_banner(config.host, config.port, token, first_start)
 
     write_pid(os.getpid())
@@ -424,6 +506,7 @@ def _daemonize(
     os.dup2(devnull, 2)
 
     _setup_logging(config.log_level, config.log_file)
+    _install_safe_writers()
     write_pid(os.getpid())
 
     async def _start_server() -> None:
