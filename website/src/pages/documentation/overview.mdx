@@ -14,14 +14,19 @@ Shellwire runs as a robust WebSocket server that acts as a bridge, allowing remo
 
 
 <section>
-## Core Capabilities
+## Architecture & Security
 
 *   **Stable Token Authentication**: Tokens are generated once on the first start and persist across daemon restarts.
+*   **Robust Process Isolation**: Commands run in isolated process groups, enabling SIGTERM → SIGKILL escalation to prevent zombie processes.
+
+## Session Management
+
 *   **Concurrent Execution**: Process up to 4 simultaneous commands with automatic background queuing.
 *   **Interactive PTY Sessions**: Full POSIX pseudo-terminal support, including dynamic terminal resizing and interactive I/O.
-*   **Robust Process Isolation**: Commands run in isolated process groups, enabling SIGTERM → SIGKILL escalation to prevent zombie processes.
-*   **Mobile / Termux Optimized**: Engineered with resilience against Android phantom process killers, terminal DOZE states, and intermittent network handoffs.
 *   **Environment Tracking**: Persists working directory (CWD) and environment variables.
+
+## Mobile / Termux Optimizations
+*   **Engineered for Mobile**: Built with resilience against Android phantom process killers, terminal DOZE states, and intermittent network handoffs.
 </section>
 
 <section>

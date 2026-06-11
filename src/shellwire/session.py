@@ -84,6 +84,7 @@ class SessionManager:
         command: str,
         *,
         cwd: Optional[str] = None,
+        env: Optional[Dict[str, str]] = None,
         on_output: Optional[SessionOutputCallback] = None,
         use_pty: bool = False,
         cols: int = 80,
@@ -95,6 +96,7 @@ class SessionManager:
             session_id: Unique identifier for this session.
             command: Shell command to run.
             cwd: Working directory (defaults to ``$HOME``).
+            env: Extra environment variables.
             on_output: Async callback invoked for each chunk of output.
             use_pty: If True, spawn behind a pseudo-terminal (requires ptyprocess).
             cols: Initial terminal width (PTY mode only).
@@ -117,12 +119,12 @@ class SessionManager:
 
         if use_pty and self._config.enable_pty:
             return await self._start_pty_session(
-                session_id, command, cwd=cwd, on_output=on_output,
+                session_id, command, cwd=cwd, env=env, on_output=on_output,
                 cols=cols, rows=rows,
             )
 
         return await self._start_pipe_session(
-            session_id, command, cwd=cwd, on_output=on_output,
+            session_id, command, cwd=cwd, env=env, on_output=on_output,
         )
 
     async def send_input(
@@ -396,10 +398,15 @@ class SessionManager:
         command: str,
         *,
         cwd: Optional[str] = None,
+        env: Optional[Dict[str, str]] = None,
         on_output: Optional[SessionOutputCallback] = None,
     ) -> Session:
         """Start a pipe-based (non-PTY) session."""
         work_dir = cwd or os.environ.get("HOME", "/")
+
+        env_vars = os.environ.copy()
+        if env is not None:
+            env_vars.update(env)
 
         proc = await asyncio.create_subprocess_shell(
             command,
@@ -407,6 +414,7 @@ class SessionManager:
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             cwd=work_dir,
+            env=env_vars,
             preexec_fn=os.setsid,
         )
 
@@ -449,6 +457,7 @@ class SessionManager:
         command: str,
         *,
         cwd: Optional[str] = None,
+        env: Optional[Dict[str, str]] = None,
         on_output: Optional[SessionOutputCallback] = None,
         cols: int = 80,
         rows: int = 24,
@@ -464,23 +473,28 @@ class SessionManager:
                 "pty_bridge not available, falling back to pipe session"
             )
             return await self._start_pipe_session(
-                session_id, command, cwd=cwd, on_output=on_output,
+                session_id, command, cwd=cwd, env=env, on_output=on_output,
             )
 
         work_dir = cwd or os.environ.get("HOME", "/")
         shell = self._config.shell_path or os.environ.get("SHELL", "/bin/sh")
 
+        env_vars = os.environ.copy()
+        if env is not None:
+            env_vars.update(env)
+
         try:
             pty = PtyBridge.spawn(
                 [shell, "-c", command],
                 cwd=work_dir,
+                env=env_vars,
                 cols=cols,
                 rows=rows,
             )
         except PtyUnavailableError as exc:
             logger.warning("PTY unavailable: %s — falling back to pipe", exc)
             return await self._start_pipe_session(
-                session_id, command, cwd=cwd, on_output=on_output,
+                session_id, command, cwd=cwd, env=env, on_output=on_output,
             )
         except (OSError, FileNotFoundError) as exc:
             logger.error("Failed to spawn PTY session: %s", exc)

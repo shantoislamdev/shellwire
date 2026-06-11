@@ -11,17 +11,23 @@ import { Icon } from 'astro-icon/components';
 </section>
 
 <section>
-## Features
+## Architecture & Security
 
-- **Stable token auth** — token generated once, persists across restarts
-- **Single client** — one active connection at a time, with reconnection support
-- **Concurrent execution** — up to 4 simultaneous commands
-- **Interactive PTY sessions (POSIX)** — full pseudo-terminal support with dynamic resizing
-- **Environment Tracking** — persistent working directory (CWD) and exported environment variables across commands
-- **Compound Command Rewriting** — automatically rewrites bash chains (e.g. `A && B &` -> `A && { B & }`) for standard backgrounding
-- **Termux / Android Optimized** — Built-in resilience against mobile network handoffs, terminal DOZE states, and phantom process killers, ensuring extreme stability for long-running mobile environments.
-- **Robust Process Isolation** — prevents zombie processes via process-group escalation kills (SIGTERM → SIGKILL) and protects against runaway output
-- **Health endpoint** — HTTP GET `/health` on the same port
+- **Stable token auth** — Token is generated once and persists across daemon restarts.
+- **Single client** — Supports one active connection at a time, with robust reconnection handling.
+- **Health endpoint** — HTTP GET `/health` exposed on the same port for monitoring.
+
+## Session Management
+
+- **Concurrent execution** — Dispatch and process up to 4 simultaneous background commands.
+- **Interactive PTY sessions (POSIX)** — Full pseudo-terminal support, including dynamic terminal resizing.
+- **Environment Tracking** — Persists working directory (CWD) and exported environment variables across distinct commands.
+
+## Process Isolation & Mobile Optimizations
+
+- **Termux / Android Optimized** — Built-in resilience against mobile network handoffs, terminal DOZE states, and Android phantom process killers. Ensures extreme stability for long-running mobile environments.
+- **Robust Process Isolation** — Prevents zombie processes via process-group escalation kills (SIGTERM → SIGKILL) and forcefully protects against runaway output streams.
+- **Compound Command Rewriting** — Automatically rewrites shell background chains (e.g., `A && B &` -> `A && { B & }`) to ensure standard execution behavior.
 </section>
 
 <section>
@@ -36,37 +42,15 @@ Or install from source:
 cd shellwire
 pip install -e ".[dev]"`} className="mt-4 mb-6" />
 
-### Auto-venv Runners
-
-If you clone the repository directly, you can use the included runner scripts which will automatically create a virtual environment (`venv`) and install dependencies for you:
-
-- **Unix / Linux**:
-  - <InlineCode className="text-tk-string px-2">./run.sh</InlineCode> — Bootstraps the daemon inside `venv`
-  - <InlineCode className="text-tk-string px-2">./test.sh</InlineCode> — Runs the test suite inside `venv`
-- **Windows**:
-  - <InlineCode className="text-tk-string px-2">run.bat</InlineCode> — Bootstraps the daemon inside `venv`
-  - <InlineCode className="text-tk-string px-2">test.bat</InlineCode> — Runs the test suite inside `venv`
 </section>
 
 <section>
 ## Quick Start
 
 <CodeSnippet code={`# Start the daemon (foreground)
-shellwire start
+shellwire start`} className="mt-4 mb-6" />
 
-# Start as background daemon
-shellwire start --daemon
-
-# Check status
-shellwire status
-
-# View your auth token
-shellwire token show
-
-# Stop the daemon
-shellwire stop`} className="mt-4 mb-6" />
-
-On first start, a stable auth token is generated and displayed. **Save it** — you'll need it to connect your client.
+On first start, a stable auth token is generated and displayed. **Save it** — you'll need it to connect your client. Please read the [documentation](/documentation/overview) to learn how to create your client and connect with Shellwire.
 </section>
 
 <section className="pt-8 mb-16 border-t border-vp-border">

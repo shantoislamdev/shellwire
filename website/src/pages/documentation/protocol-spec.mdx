@@ -62,7 +62,9 @@ Spawns a long-running interactive shell/process.
   "command": "bash",
   "use_pty": true,              // Optional (default false)
   "cols": 120,                  // Optional (PTY mode only)
-  "rows": 40                    // Optional (PTY mode only)
+  "rows": 40,                   // Optional (PTY mode only)
+  "cwd": "/var/log",            // Optional
+  "env": {"DEBUG": "1"}         // Optional
 }`} className="mt-4 mb-6" />
 
 ### Send Session Input (`send_input`)

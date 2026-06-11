@@ -431,6 +431,8 @@ class ShellwireServer:
         use_pty = data.get("use_pty", False)
         cols = data.get("cols", 80)
         rows = data.get("rows", 24)
+        cwd = data.get("cwd", "")
+        env = data.get("env")
 
         async def on_output(
             sid: str, text: str, stream: str
@@ -466,6 +468,8 @@ class ShellwireServer:
         try:
             session = await self._session_manager.start_session(
                 session_id, command,
+                cwd=cwd,
+                env=env,
                 on_output=on_output,
                 use_pty=use_pty,
                 cols=cols,

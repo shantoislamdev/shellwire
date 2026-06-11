@@ -58,6 +58,8 @@ class StartSessionMessage:
     use_pty: bool = False  # spawn behind a pseudo-terminal
     cols: int = 80  # initial terminal width (PTY mode only)
     rows: int = 24  # initial terminal height (PTY mode only)
+    cwd: str = ""  # working directory (empty = inherit daemon cwd)
+    env: Optional[Dict[str, str]] = None  # extra environment variables
     type: str = "start_session"
 
 
