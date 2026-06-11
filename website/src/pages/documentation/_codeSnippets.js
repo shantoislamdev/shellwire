@@ -27,8 +27,14 @@ class ShellwireClient(private val url: String, private val token: String, privat
             override fun onMessage(webSocket: WebSocket, text: String) {
                 val json = JSONObject(text)
                 when (json.getString("type")) {
-                    "status" -> println("Authenticated! Server uptime: \${json.getDouble("uptime_seconds")}")
-                    "error" -> println("Error: \${json.getString("message")}")
+                    "status" -> {
+                        val uptime = json.getDouble("uptime_seconds")
+                        println("Authenticated! Server uptime: $uptime")
+                    }
+                    "error" -> {
+                        val msg = json.getString("message")
+                        println("Error: $msg")
+                    }
                     // Handle other message types...
                 }
             }
@@ -242,7 +248,7 @@ export const dispatchTabs = [
     'command': commandStr,
     'timeout': 60,
   };
-  channel?.sink.add(jsonEncode(payload));
+  channel?.sink?.add(jsonEncode(payload));
 }`
   },
   {
@@ -277,6 +283,14 @@ when (json.getString("type")) {
         val exitCode = json.getInt("exit_code")
         println("Command $cmdId finished with exit code $exitCode")
     }
+    "session_started" -> {
+        val pid = json.getInt("pid")
+        println("Session started with PID: $pid")
+    }
+    "session_ended" -> {
+        val exitCode = if (json.isNull("exit_code")) null else json.getInt("exit_code")
+        println("Session ended with exit code $exitCode")
+    }
 }`
   },
   {
@@ -287,6 +301,11 @@ if ("output".equals(type)) {
     System.out.printf("[%s][%s]: %s\n", json.getString("id"), json.getString("stream"), json.getString("data"));
 } else if ("result".equals(type)) {
     System.out.println("Command finished with exit code: " + json.getInt("exit_code"));
+} else if ("session_started".equals(type)) {
+    System.out.println("Session started with PID: " + json.getInt("pid"));
+} else if ("session_ended".equals(type)) {
+    String exitCode = json.isNull("exit_code") ? "null" : String.valueOf(json.getInt("exit_code"));
+    System.out.println("Session ended with exit code: " + exitCode);
 }`
   },
   {
@@ -300,6 +319,12 @@ switch (json['type']) {
   case 'result':
     print('Command \${json['id']} finished with exit code \${json['exit_code']}');
     break;
+  case 'session_started':
+    print('Session started with PID: \${json['pid']}');
+    break;
+  case 'session_ended':
+    print('Session ended with exit code \${json['exit_code']}');
+    break;
 }`
   },
   {
@@ -310,6 +335,10 @@ if (json.type === 'output') {
   console.log(\`[\${json.id}][\${json.stream}]: \${json.data}\`);
 } else if (json.type === 'result') {
   console.log(\`Command \${json.id} finished with exit code \${json.exit_code}\`);
+} else if (json.type === 'session_started') {
+  console.log(\`Session started with PID: \${json.pid}\`);
+} else if (json.type === 'session_ended') {
+  console.log(\`Session ended with exit code \${json.exit_code}\`);
 }`
   }
 ];
@@ -398,7 +427,7 @@ public void resizeSession(String sessionId, int cols, int rows) {
     'cols': 80,
     'rows': 24,
   };
-  channel?.sink.add(jsonEncode(payload));
+  channel?.sink?.add(jsonEncode(payload));
 }
 
 void sendSessionInput(String sessionId, String input) {
@@ -407,7 +436,7 @@ void sendSessionInput(String sessionId, String input) {
     'id': sessionId,
     'data': input,
   };
-  channel?.sink.add(jsonEncode(payload));
+  channel?.sink?.add(jsonEncode(payload));
 }
 
 void resizeSession(String sessionId, int cols, int rows) {
@@ -417,7 +446,7 @@ void resizeSession(String sessionId, int cols, int rows) {
     'cols': cols,
     'rows': rows,
   };
-  channel?.sink.add(jsonEncode(payload));
+  channel?.sink?.add(jsonEncode(payload));
 }`
   },
   {
