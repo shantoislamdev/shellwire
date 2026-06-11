@@ -9,7 +9,7 @@ const vesperLightTheme = JSON.parse(fs.readFileSync(new URL('./src/vesper-light-
 
 // https://astro.build/config
 export default defineConfig({
-  site: 'https://agenticwebview.example.com',
+  site: 'https://shellwire.shantoislam.dev',
   integrations: [mdx(), icon()],
   prefetch: { prefetchAll: true },
   vite: {
