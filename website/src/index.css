@@ -202,7 +202,7 @@
     @apply break-words;
   }
   .prose-vp table {
-    @apply w-full text-left border-collapse rounded-lg mb-6 border border-vp-border;
+    @apply w-fit text-left border-collapse rounded-lg mb-6 border border-vp-border;
     display: block;
     overflow-x: auto;
   }
