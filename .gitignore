@@ -64,3 +64,4 @@ venv.bak/
 .vscode/
 .idea/
 *.swp
+_version.py

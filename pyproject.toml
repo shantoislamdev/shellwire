@@ -59,4 +59,4 @@ asyncio_mode = "auto"
 testpaths = ["tests"]
 
 [tool.setuptools_scm]
-
+version_file = "src/shellwire/_version.py"
