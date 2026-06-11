@@ -1,6 +1,6 @@
 # shellwire
 
-**WebSocket daemon for remote shell access. Built to empower Android apps and agents with a full desktop-like shell via Termux.**
+**A WebSocket daemon for remote shell execution and interactive terminal sessions**
 
 `shellwire` runs as a WebSocket server, providing a bridge that lets remote clients execute shell commands with full system access. While fully compatible with Linux and macOS, it is uniquely engineered for Android devices. Android applications typically lack proper terminal access, making it difficult to run local AI agents or advanced tools on-device. Shellwire solves this by running inside Termux and exposing a WebSocket server, acting as a bridge to give Android apps a complete, desktop-grade shell environment.
 
@@ -65,7 +65,7 @@ On first start, a stable auth token is generated and displayed. **Save it** — 
 
 ## Documentation
 
-Comprehensive enterprise-grade documentation is available in the `docs/` folder:
+Documentation is available in the `docs/` directory:
 
 *   **[Overview & Architecture](docs/index.md)**: High-level overview and architectural flow.
 *   **[Daemon Guide](docs/daemon_guide.md)**: Server administration, CLI commands, configuration flags, and token management.
