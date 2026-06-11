@@ -1,0 +1,92 @@
+---
+import '../index.css';
+import { ViewTransitions } from 'astro:transitions';
+
+interface Props {
+	title?: string;
+  description?: string;
+}
+
+const { title = "Shellwire", description = "Server infrastructure and protocol to expose interactive terminals over WebSockets." } = Astro.props;
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>{title}</title>
+    <meta name="description" content={description} />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://shellwire.shantoislam.dev/" />
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:title" content={title} />
+    <meta name="twitter:description" content={description} />
+    
+    <!-- Preconnect to Google Fonts for performance -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+
+    <ViewTransitions />
+    <script is:inline>
+      function applyTheme() {
+        const theme = (() => {
+          if (typeof localStorage !== 'undefined' && localStorage.getItem('shellwire-theme')) {
+            return localStorage.getItem('shellwire-theme');
+          }
+          return 'dark'; // default
+        })();
+        if (theme === 'light') {
+          document.documentElement.classList.add('light');
+          document.documentElement.classList.remove('dark');
+        } else {
+          document.documentElement.classList.add('dark');
+          document.documentElement.classList.remove('light');
+        }
+      }
+      
+      applyTheme();
+      document.addEventListener('astro:after-swap', applyTheme);
+
+      function parseMarkdownAlerts() {
+        const blockquotes = document.querySelectorAll('.prose-vp blockquote, .home-prose blockquote');
+        blockquotes.forEach(bq => {
+          const firstP = bq.querySelector('p');
+          if (!firstP) return;
+          const html = firstP.innerHTML.trim();
+          
+          const alertRegex = /^\s*\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]/i;
+          const match = html.match(alertRegex);
+          
+          if (match) {
+            const type = match[1].toLowerCase();
+            const rawContent = html.substring(match[0].length).trim();
+            const iconMap = {
+              note: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>',
+              tip: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>',
+              important: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"></path></svg>',
+              warning: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>',
+              caution: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="7.86 2 16.14 2 22 7.86 22 16.14 16.14 22 7.86 22 2 16.14 2 7.86 7.86 2"></polygon><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>'
+            };
+
+            const mappedType = type === 'caution' ? 'warning' : type;
+
+            bq.classList.add('is-alert', `is-alert-${mappedType}`);
+            
+            firstP.innerHTML = `<div class="alert-title">${iconMap[type] || iconMap.note} ${type}</div>` + (rawContent ? `<div>${rawContent}</div>` : "");
+          }
+        });
+      }
+      
+      document.addEventListener('DOMContentLoaded', parseMarkdownAlerts);
+      document.addEventListener('astro:page-load', parseMarkdownAlerts);
+    </script>
+  </head>
+  <body>
+    <slot />
+  </body>
+</html>

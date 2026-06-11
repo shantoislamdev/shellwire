@@ -1,0 +1,205 @@
+---
+import Layout from './Layout.astro';
+import ThemeToggle from '../components/ThemeToggle.astro';
+import Footer from '../components/Footer.astro';
+import { Icon } from 'astro-icon/components';
+
+interface Props {
+  frontmatter: {
+    title: string;
+    description: string;
+  };
+}
+
+const { frontmatter } = Astro.props;
+const currentPath = Astro.url.pathname;
+const cleanPath = currentPath.endsWith('/') ? currentPath.slice(0, -1) : currentPath;
+
+const DOCS_NAV = [
+  { path: '/documentation/overview', label: 'Overview & Architecture' },
+  { path: '/documentation/daemon-guide', label: 'Daemon Guide' },
+  { path: '/documentation/protocol-spec', label: 'Protocol Specification' },
+  { path: '/documentation/client-integration', label: 'Client Integration' },
+];
+
+const currentIndex = DOCS_NAV.findIndex(item => cleanPath === item.path || cleanPath + '/' === item.path || (item.path !== '/documentation/overview' && cleanPath.includes(item.path)));
+const prevPage = currentIndex > 0 ? DOCS_NAV[currentIndex - 1] : null;
+const nextPage = currentIndex !== -1 && currentIndex < DOCS_NAV.length - 1 ? DOCS_NAV[currentIndex + 1] : null;
+---
+
+<Layout title={frontmatter.title} description={frontmatter.description}>
+  <div class="min-h-screen bg-vp-bg text-vp-fg font-sans antialiased flex flex-col items-center">
+    <!-- Sticky Header -->
+    <header class="sticky top-0 z-40 shrink-0 w-full bg-vp-bg/95 backdrop-blur flex justify-center">
+      <div class="w-full max-w-[1200px] px-4 sm:px-6 h-16 sm:h-20 flex items-center justify-between">
+        <div class="flex items-center gap-3">
+          <button 
+            id="sidebar-toggle"
+            class="p-1.5 -ml-1.5 text-vp-subtle hover:text-vp-fg transition-colors rounded-sm flex items-center justify-center"
+            aria-label="Toggle navigation menu"
+          >
+            <Icon id="icon-close" name="lucide:panel-left-close" class="w-5 h-5 hidden" />
+            <Icon id="icon-open" name="lucide:panel-left-open" class="w-5 h-5" />
+          </button>
+          <a href="/" class="flex items-center gap-2 sm:gap-3">
+            <span class="font-medium text-[14px] sm:text-[15px] tracking-tight text-vp-fg">Shellwire</span>
+          </a>
+        </div>
+        <div class="flex items-center gap-4">
+          <a href="/" class="text-[14px] font-medium text-vp-subtle hover:text-vp-fg transition-colors">Home</a>
+          <div class="w-[1px] h-4 bg-vp-border"></div>
+          <ThemeToggle />
+        </div>
+      </div>
+    </header>
+    
+    <div class="flex w-full max-w-[1200px] px-4 sm:px-6 flex-1 items-start">
+      <!-- Sidebar Navigation (Sticky) -->
+      <div 
+        id="sidebar"
+        class="shrink-0 sticky top-[64px] sm:top-[80px] h-[calc(100vh-64px)] sm:h-[calc(100vh-80px)] grid transition-[grid-template-columns,opacity] duration-300 ease-in-out z-30 bg-vp-bg max-md:fixed max-md:left-0 max-md:w-full max-md:opacity-0 max-md:pointer-events-none"
+        style="grid-template-columns: 0fr;"
+      >
+        <div class="overflow-hidden md:max-w-56 max-md:max-w-none max-md:w-screen h-full flex flex-col min-w-0 max-md:px-4 sm:max-md:px-6" id="sidebar-inner">
+          <div class="min-w-max h-full overflow-y-auto overflow-x-hidden flex-1">
+            <aside class="py-6 md:py-12 pr-4 w-full md:max-w-56 max-md:max-w-none">
+              <h3 class="text-xs font-medium tracking-wider text-vp-subtle mb-3 uppercase whitespace-nowrap">Documentation</h3>
+              <div class="w-8 h-[1px] bg-vp-border mb-4"></div>
+              <nav class="flex flex-col gap-2 md:gap-1 pb-10 md:pb-0">
+                {DOCS_NAV.map((navItem) => {
+                  const isActive = cleanPath === navItem.path || cleanPath + '/' === navItem.path || (navItem.path !== '/documentation/overview' && cleanPath.includes(navItem.path));
+                  return (
+                    <a
+                      href={navItem.path}
+                      aria-current={isActive ? 'page' : undefined}
+                      class={`block py-1.5 md:py-1 text-[14px] transition-colors whitespace-normal break-words ${
+                        isActive
+                          ? 'text-vp-fg font-medium'
+                          : 'text-vp-subtle hover:text-vp-fg'
+                      }`}
+                    >
+                      {navItem.label}
+                    </a>
+                  );
+                })}
+              </nav>
+            </aside>
+          </div>
+        </div>
+      </div>
+
+      <!-- Main Content Area -->
+      <main 
+        id="main-scroll-area"
+        class="flex-1 w-full min-w-0 py-8 md:py-12 md:px-8 lg:px-12 transition-all duration-300 ease-in-out opacity-100"
+      >
+        <div class="max-w-[800px] mx-auto w-full">
+          <div class="mb-10 sm:mb-14">
+            <h1 class="text-3xl sm:text-[32px] font-medium tracking-tight text-vp-fg mb-3">{frontmatter.title}</h1>
+            {frontmatter.description && (
+              <p class="text-vp-text text-[15px] sm:text-base leading-relaxed">{frontmatter.description}</p>
+            )}
+          </div>
+          <div class="prose prose-vp max-w-none">
+            <slot />
+          </div>
+
+          <!-- Prev / Next Pagination -->
+          <div class="mt-20 pt-8 border-t border-vp-border flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6 sm:gap-0">
+            <div class="flex-1">
+              {prevPage && (
+                <a 
+                  href={prevPage.path}
+                  class="group flex flex-col items-start text-vp-text hover:text-vp-highlight transition-colors w-max"
+                >
+                  <span class="text-xs text-vp-subtle uppercase tracking-wider mb-1 group-hover:text-vp-highlight/70">Previous</span>
+                  <span class="font-medium">{prevPage.label}</span>
+                </a>
+              )}
+            </div>
+            <div class="flex-1 flex justify-end w-full sm:w-auto">
+              {nextPage && (
+                <a 
+                  href={nextPage.path}
+                  class="group flex flex-col items-end text-vp-text hover:text-vp-highlight transition-colors w-max"
+                >
+                  <span class="text-xs text-vp-subtle uppercase tracking-wider mb-1 group-hover:text-vp-highlight/70">Next</span>
+                  <span class="font-medium text-right">{nextPage.label}</span>
+                </a>
+              )}
+            </div>
+          </div>
+
+          <Footer className="mt-12 mb-12" />
+        </div>
+      </main>
+    </div>
+  </div>
+</Layout>
+
+<script>
+  function setupSidebar() {
+    let isSidebarOpen = false;
+
+    function updateSidebarState() {
+      const sidebar = document.getElementById('sidebar');
+      const inner = document.getElementById('sidebar-inner');
+      const mainArea = document.getElementById('main-scroll-area');
+      const iconClose = document.getElementById('icon-close');
+      const iconOpen = document.getElementById('icon-open');
+      
+      if (sidebar) {
+        if (isSidebarOpen) {
+          sidebar.style.gridTemplateColumns = '1fr';
+          sidebar.classList.remove('max-md:opacity-0', 'max-md:pointer-events-none');
+          sidebar.classList.add('max-md:opacity-100');
+          iconClose?.classList.remove('hidden');
+          iconOpen?.classList.add('hidden');
+        } else {
+          sidebar.style.gridTemplateColumns = '0fr';
+          sidebar.classList.remove('max-md:opacity-100');
+          sidebar.classList.add('max-md:opacity-0', 'max-md:pointer-events-none');
+          iconClose?.classList.add('hidden');
+          iconOpen?.classList.remove('hidden');
+        }
+      }
+      
+      if (mainArea) {
+        if (isSidebarOpen && window.innerWidth < 768) {
+          mainArea.classList.add('max-md:opacity-0', 'max-md:pointer-events-none');
+        } else {
+          mainArea.classList.remove('max-md:opacity-0', 'max-md:pointer-events-none');
+        }
+      }
+    }
+
+    function handleResize() {
+      if (window.innerWidth >= 768) {
+        isSidebarOpen = true;
+      } else {
+        isSidebarOpen = false;
+      }
+      updateSidebarState();
+    }
+
+    const toggleBtn = document.getElementById('sidebar-toggle');
+    if (toggleBtn) {
+      // Remove old listeners to prevent duplicates if running multiple times
+      const newToggleBtn = toggleBtn.cloneNode(true);
+      toggleBtn.parentNode?.replaceChild(newToggleBtn, toggleBtn);
+      
+      newToggleBtn.addEventListener('click', () => {
+        isSidebarOpen = !isSidebarOpen;
+        updateSidebarState();
+      });
+    }
+
+    window.removeEventListener('resize', handleResize);
+    window.addEventListener('resize', handleResize);
+    
+    // Set initial state based on window size
+    handleResize();
+  }
+
+  document.addEventListener('astro:page-load', setupSidebar);
+</script>

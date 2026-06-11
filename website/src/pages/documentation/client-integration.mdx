@@ -1,0 +1,63 @@
+---
+layout: ../../layouts/DocLayout.astro
+title: Client Integration
+description: Developer guide for building custom WebSocket clients, including complete Kotlin examples.
+---
+
+import CodeSnippet from '../../components/CodeSnippet.astro';
+import CodeTabs from '../../components/CodeTabs.astro';
+import { authTabs, dispatchTabs, responseTabs, ptyTabs } from './_codeSnippets.js';
+
+<section>
+Building a custom client for Shellwire involves establishing a WebSocket connection, adhering to the strict JSON protocol, and implementing network resilience logic. This guide covers the essential workflow using examples in **Kotlin, Java, Flutter, and TypeScript**.
+</section>
+
+<section>
+## Integration Workflow
+
+The standard lifecycle for a Shellwire client:
+1.  **Connect**: Open a WebSocket connection.
+2.  **Authenticate**: Send the `auth` JSON payload immediately.
+3.  **Await Ready**: Listen for the `status` response from the server.
+4.  **Dispatch**: Send `execute` or `start_session` messages.
+5.  **Process Output**: Parse incoming `output` messages. Note that terminal outputs may contain ANSI escape sequences, which you might need to render or strip on the client side.
+</section>
+
+<section>
+## Implementation Examples
+
+The following examples demonstrate how to implement the client in various environments. Use the tabs to switch between languages.
+
+> [!NOTE]
+> While these snippets can be used for any JVM or Dart/JS client, they demonstrate how developers can connect their local application to a hosted Shellwire daemon via WebSockets.
+
+### 1. Connection & Authentication
+
+<CodeTabs tabs={authTabs} />
+
+### 2. Dispatching a One-Shot Command
+
+Once authenticated (i.e., after receiving the `status` message), you can dispatch commands.
+
+<CodeTabs tabs={dispatchTabs} />
+
+To handle the response, update your message listener:
+
+<CodeTabs tabs={responseTabs} />
+
+### 3. Starting an Interactive Session (PTY)
+
+Interactive sessions allow sending input and dynamically resizing the terminal.
+
+<CodeTabs tabs={ptyTabs} />
+</section>
+
+<section>
+## Resilience & Stability Guidelines
+
+Building clients for mobile environments (like Android/Termux) requires handling network flakiness.
+
+1.  **Handoffs & Disconnects**: Mobile network handoffs (e.g., WiFi -> LTE) will sever WebSocket connections. Implement an exponential backoff reconnection strategy within the `onFailure` and `onClosed` callbacks of your WebSocket listener.
+2.  **Ping/Pong**: The server sends PING frames to ensure the TCP connection is alive. The OkHttp WebSocket implementation handles standard WebSocket PING/PONG automatically. However, Shellwire *also* supports application-level `ping` and `pong` JSON messages if your library requires manual keep-alives.
+3.  **ANSI Escape Codes**: When `use_pty` is enabled or specific CLI tools output color, `data` in `output` messages will contain ANSI escape sequences. You must use a terminal emulator view (e.g., Termux terminal view or Xterm.js for web) to render these, or manually strip them using a Regex algorithm on the client side.
+</section>

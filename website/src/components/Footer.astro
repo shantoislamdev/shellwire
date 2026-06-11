@@ -1,0 +1,17 @@
+---
+import { Icon } from 'astro-icon/components';
+
+export interface Props {
+  className?: string;
+}
+
+const { className = '' } = Astro.props;
+---
+
+<footer class={`pt-8 text-vp-subtle text-[12px] sm:text-[13px] flex items-center justify-between gap-2 border-t border-vp-border ${className}`}>
+  <span class="flex items-center gap-1.5">
+    <Icon name="lucide:copyright" class="w-[14px] h-[14px]" />
+    {new Date().getFullYear()} Shellwire
+  </span>
+  <span>Built with 🖤 by <a href="https://shantoislam.dev" target="_blank" rel="noopener noreferrer" class="font-medium text-vp-fg transition-colors border-b border-transparent hover:border-vp-fg active:border-vp-fg">Shanto Islam</a></span>
+</footer>

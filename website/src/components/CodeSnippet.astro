@@ -1,0 +1,54 @@
+---
+import CopyButton from './CopyButton.astro';
+import { Code } from 'astro:components';
+import vesperTheme from '../vesper-theme.json';
+import vesperLightTheme from '../vesper-light-theme.json';
+
+export interface Props {
+  code: string;
+  lang?: any;
+  label?: string;
+  className?: string;
+}
+
+const { code, label, className } = Astro.props;
+let lang: any = Astro.props.lang;
+
+if (!lang) {
+  const trimmed = code.trim();
+  if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+    lang = 'json';
+  } else if (trimmed.startsWith('import ') || trimmed.startsWith('export ') || trimmed.startsWith('const ')) {
+    if (trimmed.includes('val ') || trimmed.includes('fun ') || trimmed.includes('class ') || trimmed.includes('okhttp3')) {
+      lang = 'kotlin';
+    } else if (trimmed.includes('java.util') || trimmed.includes('public class')) {
+      lang = 'java';
+    } else if (trimmed.includes('package ')) {
+      lang = 'dart';
+    } else {
+      lang = 'javascript';
+    }
+  } else if (trimmed.startsWith('<')) {
+    lang = 'html';
+  } else {
+    lang = 'bash';
+  }
+}
+---
+
+<div class={`relative group bg-vp-bg border border-vp-border rounded-sm flex flex-col ${className || 'mb-6 mt-4'}`}>
+  <CopyButton text={code} className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity z-10" />
+  <div class="p-4 sm:p-5 overflow-x-auto code-scroll">
+    {label && <span class="text-[11px] font-medium uppercase tracking-wider text-vp-subtle mb-3 block">{label}</span>}
+    <Code 
+      code={code}
+      lang={lang}
+      themes={{
+        light: vesperLightTheme as any,
+        dark: vesperTheme as any,
+      }}
+      defaultColor={false}
+      class="text-[12px] sm:text-[13px] font-mono flex-1 leading-[1.7] !bg-transparent !p-0 !m-0"
+    />
+  </div>
+</div>

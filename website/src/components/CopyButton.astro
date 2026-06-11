@@ -1,0 +1,58 @@
+---
+import { Icon } from 'astro-icon/components';
+
+export interface Props {
+  text: string;
+  className?: string;
+  id?: string;
+}
+
+const { text, className = "", id = "" } = Astro.props;
+---
+
+<button 
+  class={`copy-button p-1.5 text-vp-subtle hover:text-vp-fg transition-colors rounded-md hover:bg-vp-selection/50 ${className}`}
+  data-text={text}
+  id={id}
+  title="Copy code"
+  aria-label="Copy to clipboard"
+>
+  <div class="icon-copy flex items-center justify-center">
+    <Icon name="lucide:copy" class="w-4 h-4" />
+  </div>
+  <div class="icon-check hidden text-vp-highlight flex items-center justify-center">
+    <Icon name="lucide:check" class="w-4 h-4" />
+  </div>
+</button>
+
+<script>
+  function setupCopyButtons() {
+    const copyButtons = document.querySelectorAll('.copy-button');
+    copyButtons.forEach(btn => {
+      // Prevent attaching multiple listeners if re-ran
+      if (btn.hasAttribute('data-copy-bound')) return;
+      btn.setAttribute('data-copy-bound', 'true');
+
+      btn.addEventListener('click', async () => {
+        const text = btn.getAttribute('data-text');
+        if (text) {
+          try {
+            await navigator.clipboard.writeText(text);
+            const iconCopy = btn.querySelector('.icon-copy');
+            const iconCheck = btn.querySelector('.icon-check');
+            iconCopy?.classList.add('hidden');
+            iconCheck?.classList.remove('hidden');
+            setTimeout(() => {
+              iconCopy?.classList.remove('hidden');
+              iconCheck?.classList.add('hidden');
+            }, 2000);
+          } catch (e) {
+            console.error('Failed to copy', e);
+          }
+        }
+      });
+    });
+  }
+
+  document.addEventListener('astro:page-load', setupCopyButtons);
+</script>

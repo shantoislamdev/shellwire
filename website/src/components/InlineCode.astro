@@ -1,0 +1,13 @@
+---
+export interface Props {
+  className?: string;
+  [key: string]: any;
+}
+
+const { className = '', ...props } = Astro.props;
+const baseClasses = "bg-vp-input px-1.5 py-0.5 rounded border border-vp-border text-[12px]";
+---
+
+<code class={`${baseClasses} ${className || 'text-vp-fg'}`} {...props}>
+  <slot />
+</code>

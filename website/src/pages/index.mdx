@@ -1,0 +1,84 @@
+---
+layout: ../layouts/HomeLayout.astro
+---
+
+import CodeSnippet from '../components/CodeSnippet.astro';
+import InlineCode from '../components/InlineCode.astro';
+import { Icon } from 'astro-icon/components';
+
+<section>
+`shellwire` runs as a WebSocket server, providing a bridge that lets remote clients execute shell commands with full system access. While fully compatible with Linux and macOS, it is uniquely engineered for Android devices. Android applications typically lack proper terminal access, making it difficult to run local AI agents or advanced tools on-device. Shellwire solves this by running inside Termux and exposing a WebSocket server, acting as a bridge to give Android apps a complete, desktop-grade shell environment.
+</section>
+
+<section>
+## Features
+
+- **Stable token auth** — token generated once, persists across restarts
+- **Single client** — one active connection at a time, with reconnection support
+- **Concurrent execution** — up to 4 simultaneous commands
+- **Interactive PTY sessions (POSIX)** — full pseudo-terminal support with dynamic resizing
+- **Environment Tracking** — persistent working directory (CWD) and exported environment variables across commands
+- **Compound Command Rewriting** — automatically rewrites bash chains (e.g. `A && B &` -> `A && { B & }`) for standard backgrounding
+- **Termux / Android Optimized** — Built-in resilience against mobile network handoffs, terminal DOZE states, and phantom process killers, ensuring extreme stability for long-running mobile environments.
+- **Robust Process Isolation** — prevents zombie processes via process-group escalation kills (SIGTERM → SIGKILL) and protects against runaway output
+- **Health endpoint** — HTTP GET `/health` on the same port
+</section>
+
+<section>
+## Installation
+
+<CodeSnippet code={`# Via pip
+pip install shellwire`} className="mt-4 mb-6" />
+
+Or install from source:
+
+<CodeSnippet code={`git clone https://github.com/shantoislamdev/shellwire.git
+cd shellwire
+pip install -e ".[dev]"`} className="mt-4 mb-6" />
+
+### Auto-venv Runners
+
+If you clone the repository directly, you can use the included runner scripts which will automatically create a virtual environment (`venv`) and install dependencies for you:
+
+- **Unix / Linux**:
+  - <InlineCode className="text-tk-string px-2">./run.sh</InlineCode> — Bootstraps the daemon inside `venv`
+  - <InlineCode className="text-tk-string px-2">./test.sh</InlineCode> — Runs the test suite inside `venv`
+- **Windows**:
+  - <InlineCode className="text-tk-string px-2">run.bat</InlineCode> — Bootstraps the daemon inside `venv`
+  - <InlineCode className="text-tk-string px-2">test.bat</InlineCode> — Runs the test suite inside `venv`
+</section>
+
+<section>
+## Quick Start
+
+<CodeSnippet code={`# Start the daemon (foreground)
+shellwire start
+
+# Start as background daemon
+shellwire start --daemon
+
+# Check status
+shellwire status
+
+# View your auth token
+shellwire token show
+
+# Stop the daemon
+shellwire stop`} className="mt-4 mb-6" />
+
+On first start, a stable auth token is generated and displayed. **Save it** — you'll need it to connect your client.
+</section>
+
+<section className="pt-8 mb-16 border-t border-vp-border">
+
+<div class="flex flex-col sm:flex-row items-start sm:items-center gap-4 sm:gap-6 mt-8">
+  <a href="/documentation/overview" class="inline-flex items-center text-vp-subtle hover:text-vp-fg transition-colors text-[14px]">
+    <span>Read full documentation</span>
+    <Icon name="lucide:arrow-right" class="ml-1.5 w-[14px] h-[14px]" />
+  </a>
+  <a href="https://github.com/shantoislamdev/shellwire" target="_blank" rel="noopener noreferrer" class="inline-flex items-center text-vp-subtle hover:text-vp-fg transition-colors text-[14px]">
+    <span>Star on GitHub</span>
+    <Icon name="lucide:arrow-up-right" class="ml-1.5 w-[14px] h-[14px]" />
+  </a>
+</div>
+</section>

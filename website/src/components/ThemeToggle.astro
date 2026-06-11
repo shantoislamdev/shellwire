@@ -1,0 +1,65 @@
+---
+import { Icon } from 'astro-icon/components';
+
+export interface Props {
+  className?: string;
+}
+
+const { className = '' } = Astro.props;
+---
+
+<button
+  id="theme-toggle"
+  class={`p-1.5 text-vp-subtle hover:text-vp-fg transition-colors rounded-sm ${className}`}
+  aria-label="Toggle theme"
+>
+  <Icon id="theme-toggle-dark-icon" name="lucide:sun" class="hidden w-[18px] h-[18px]" />
+  <Icon id="theme-toggle-light-icon" name="lucide:moon" class="hidden w-[18px] h-[18px]" />
+</button>
+
+<script>
+  function setupThemeToggle() {
+    const btn = document.getElementById('theme-toggle');
+    if (!btn) return;
+
+    if (btn.hasAttribute('data-theme-bound')) return;
+    btn.setAttribute('data-theme-bound', 'true');
+
+    const themeToggleDarkIcon = document.getElementById('theme-toggle-dark-icon');
+    const themeToggleLightIcon = document.getElementById('theme-toggle-light-icon');
+
+    const getTheme = () => {
+      if (typeof localStorage !== 'undefined' && localStorage.getItem('shellwire-theme')) {
+        return localStorage.getItem('shellwire-theme');
+      }
+      return 'dark'; // Default theme
+    };
+
+    const setTheme = (theme) => {
+      const root = document.documentElement;
+      root.classList.remove('light', 'dark');
+      root.classList.add(theme);
+      localStorage.setItem('shellwire-theme', theme);
+      
+      if (theme === 'dark') {
+        themeToggleDarkIcon?.classList.remove('hidden');
+        themeToggleLightIcon?.classList.add('hidden');
+      } else {
+        themeToggleDarkIcon?.classList.add('hidden');
+        themeToggleLightIcon?.classList.remove('hidden');
+      }
+      
+      window.dispatchEvent(new CustomEvent('theme-changed', { detail: { theme } }));
+    };
+
+    // Initialize theme
+    setTheme(getTheme());
+
+    btn.addEventListener('click', () => {
+      const currentTheme = getTheme();
+      setTheme(currentTheme === 'dark' ? 'light' : 'dark');
+    });
+  }
+
+  document.addEventListener('astro:page-load', setupThemeToggle);
+</script>

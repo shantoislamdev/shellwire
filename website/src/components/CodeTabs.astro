@@ -1,0 +1,85 @@
+---
+import CodeSnippet from './CodeSnippet.astro';
+
+export interface Tab {
+  id: string;
+  label: string;
+  code: string;
+}
+
+export interface Props {
+  tabs: Tab[];
+  className?: string;
+}
+
+const { tabs, className } = Astro.props;
+---
+
+<code-tabs class={`block ${className || 'mb-6 mt-4'}`}>
+  <div class="flex space-x-2 mb-[-1px] relative z-10 px-2 overflow-x-auto hide-scrollbar">
+    {tabs.map((tab, index) => (
+      <button
+        class={`tab-button px-4 py-2 text-[13px] font-medium rounded-t-lg border-t border-l border-r transition-colors ${index === 0 ? 'bg-vp-bg border-vp-border text-vp-text' : 'bg-transparent border-transparent text-vp-subtle hover:text-vp-text hover:bg-vp-bg/50'}`}
+        data-tab-id={tab.id}
+      >
+        {tab.label}
+      </button>
+    ))}
+  </div>
+  
+  <div class="relative bg-vp-bg border border-vp-border rounded-lg rounded-tl-none sm:rounded-tl-lg overflow-hidden">
+    {tabs.map((tab, index) => (
+      <div class={`tab-content ${index === 0 ? 'block' : 'hidden'}`} data-tab-id={tab.id}>
+        <CodeSnippet lang={tab.id === 'flutter' ? 'dart' : tab.id} code={tab.code.trim()} className="!mt-0 !mb-0 !border-0 !rounded-none" />
+      </div>
+    ))}
+  </div>
+</code-tabs>
+
+<script>
+  class CodeTabs extends HTMLElement {
+    constructor() {
+      super();
+      const buttons = this.querySelectorAll('.tab-button');
+      const contents = this.querySelectorAll('.tab-content');
+
+      buttons.forEach(button => {
+        button.addEventListener('click', () => {
+          const tabId = button.getAttribute('data-tab-id');
+          
+          buttons.forEach(b => {
+             if (b === button) {
+               b.classList.add('bg-vp-bg', 'border-vp-border', 'text-vp-text');
+               b.classList.remove('bg-transparent', 'border-transparent', 'text-vp-subtle', 'hover:bg-vp-bg/50');
+             } else {
+               b.classList.remove('bg-vp-bg', 'border-vp-border', 'text-vp-text');
+               b.classList.add('bg-transparent', 'border-transparent', 'text-vp-subtle', 'hover:bg-vp-bg/50');
+             }
+          });
+          
+          contents.forEach(content => {
+            if (content.getAttribute('data-tab-id') === tabId) {
+              content.classList.remove('hidden');
+              content.classList.add('block');
+            } else {
+              content.classList.remove('block');
+              content.classList.add('hidden');
+            }
+          });
+        });
+      });
+    }
+  }
+
+  customElements.define('code-tabs', CodeTabs);
+</script>
+
+<style>
+.hide-scrollbar::-webkit-scrollbar {
+    display: none;
+}
+.hide-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+}
+</style>
