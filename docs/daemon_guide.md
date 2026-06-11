@@ -1,0 +1,82 @@
+# Shellwire Daemon Guide
+
+This guide covers the administration, configuration, and management of the Shellwire WebSocket daemon.
+
+## Installation & Bootstrap
+
+You can install Shellwire globally or in a virtual environment.
+
+### Pip Installation
+```bash
+pip install shellwire
+```
+
+### Source & Auto-Venv
+If running from source, Shellwire includes bootstrap scripts that automatically create a virtual environment (`venv`) and install dependencies:
+*   **Unix / Linux**: `./run.sh`
+*   **Windows**: `run.bat`
+
+## Daemon Management
+
+The `shellwire` CLI provides commands to manage the daemon's lifecycle.
+
+| Command | Description |
+| :--- | :--- |
+| `shellwire start` | Starts the daemon in the foreground. |
+| `shellwire start --daemon` | Forks the daemon to the background (POSIX only). |
+| `shellwire stop` | Sends SIGTERM to the running daemon to shut it down gracefully. |
+| `shellwire status` | Checks if the daemon is currently running. |
+| `shellwire version` | Prints the current Shellwire version. |
+
+> [!TIP]
+> Use `shellwire run` as a convenient alias for `shellwire start` (without the daemon flag).
+
+### Configuration Flags
+
+Configuration is handled via CLI flags when starting the daemon.
+
+| Flag | Default | Description |
+| :--- | :--- | :--- |
+| `--host` | `127.0.0.1` | Bind address for the WebSocket server. |
+| `--port` | `7842` | Port to listen on. |
+| `--log-level` | `INFO` | Logging verbosity (`DEBUG`, `INFO`, `WARNING`, `ERROR`). |
+
+Data files (logs, tokens, PIDs) are stored persistently in `~/.shellwire/`.
+
+## Authentication & Tokens
+
+Shellwire uses a **stable token authentication** system. The authentication token is a 64-character cryptographically secure hex string.
+
+*   **Generation**: The token is generated *once* upon the first daemon start and persists across restarts.
+*   **Storage**: Stored locally in `~/.shellwire/auth.token`.
+
+### Token Commands
+
+| Command | Description |
+| :--- | :--- |
+| `shellwire token show` | Displays the current stable auth token. |
+| `shellwire token rotate` | Generates a new token, instantly invalidating the old one. *Requires daemon restart to take effect.* |
+
+## Client Connection Management
+
+The daemon tracks connected clients and allows administrators to forcefully revoke access.
+
+| Command | Description |
+| :--- | :--- |
+| `shellwire clients list` | Displays a table of all known clients, their connection status, and last seen timestamps. |
+| `shellwire clients revoke <id>` | Immediately revokes access for the specified `client_id`. |
+
+> [!WARNING]
+> Revoking an actively connected client will forcibly disconnect them upon their next request. They will not be able to reconnect using that ID.
+
+## Advanced Features
+
+### Idle Session Timeout
+To preserve system resources (especially on mobile environments like Termux where phantom process killers are aggressive), Shellwire automatically monitors interactive sessions. Sessions with no client input for over 1 hour (3600 seconds) are automatically terminated.
+
+### Graceful Shutdown
+When `shellwire stop` is called, the daemon executes a multi-stage shutdown:
+1.  Stops accepting new commands.
+2.  Sends a `daemon_stopping` notification to the connected client.
+3.  Waits for a 5-second grace period for active commands to finish.
+4.  Sends `SIGTERM` followed by `SIGKILL` to all remaining process groups.
